@@ -1,14 +1,17 @@
 // src/screens/RelatoriosScreen.tsx
+// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import {
   View,
   ScrollView,
   Text,
   TouchableOpacity,
-  Alert,
+  Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSQLiteContext } from 'expo-sqlite';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import AppHeader from '../components/AppHeader';
@@ -20,465 +23,447 @@ type VendaRow = {
   data: string;
   descricao: string;
   valor: number;
+  custo: number;
   lucro: number;
+  tipo: string;
   status: string;
+  cliente?: string | null;
 };
 
-type CompraRow = {
+type ClienteRow = {
   id: number;
-  data: string;
-  descricao: string;
-  categoria: string;
-  fornecedor?: string | null;
-  valor: number;
+  nome: string;
+  telefone?: string | null;
 };
 
-type PeriodoRapido =
-  | 'hoje'
-  | 'ontem'
-  | 'semana'
-  | 'mes_atual'
-  | 'mes_passado'
-  | 'ano'
-  | 'personalizado';
+const parseDateBRToDate = (dateStr: string): Date | null => {
+  // Espera "DD/MM/AAAA"
+  const [dia, mes, ano] = dateStr.split('/');
+  const d = Number(dia);
+  const m = Number(mes) - 1;
+  const y = Number(ano);
+  if (!d || !y || m < 0) return null;
+  return new Date(y, m, d);
+};
 
-const normalizarData = (d: Date) =>
-  new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-const formatarDataBR = (d: Date) => {
+const formatDateBR = (d: Date): string => {
   const dia = String(d.getDate()).padStart(2, '0');
   const mes = String(d.getMonth() + 1).padStart(2, '0');
   const ano = d.getFullYear();
   return `${dia}/${mes}/${ano}`;
 };
 
-// aceita tanto "YYYY-MM-DD" quanto "DD/MM/YYYY"
-const parseDataBanco = (dataStr: string | null | undefined): Date | null => {
-  if (!dataStr) return null;
-  const s = dataStr.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    // ISO
-    const [ano, mes, dia] = s.split('-').map(Number);
-    return new Date(ano, mes - 1, dia);
-  }
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-    // BR
-    const [dia, mes, ano] = s.split('/').map(Number);
-    return new Date(ano, mes - 1, dia);
-  }
-  return null;
-};
-
 const RelatoriosScreen: React.FC = () => {
   const db = useSQLiteContext();
 
-  const hoje = new Date();
-  const hojeNorm = normalizarData(hoje);
-  const anoAtual = hojeNorm.getFullYear();
-  const mesAtual = hojeNorm.getMonth();
+  const [dataInicio, setDataInicio] = useState<Date>(() => {
+    const hoje = new Date();
+    return new Date(hoje.getFullYear(), hoje.getMonth(), 1); // primeiro dia do mês
+  });
+  const [dataFim, setDataFim] = useState<Date>(new Date());
 
-  const primeiroDiaMes = new Date(anoAtual, mesAtual, 1);
-  const ultimoDiaMes = new Date(anoAtual, mesAtual + 1, 0);
+  const [mostraPickerInicio, setMostraPickerInicio] = useState(false);
+  const [mostraPickerFim, setMostraPickerFim] = useState(false);
 
-  const [periodoRapido, setPeriodoRapido] =
-    useState<PeriodoRapido>('mes_atual');
+  const [vendas, setVendas] = useState<VendaRow[]>([]);
+  const [totalReceita, setTotalReceita] = useState(0);
+  const [totalCusto, setTotalCusto] = useState(0);
+  const [totalLucro, setTotalLucro] = useState(0);
 
-  const [dataInicioPersonalizado, setDataInicioPersonalizado] =
-    useState<Date>(primeiroDiaMes);
-  const [dataFimPersonalizado, setDataFimPersonalizado] =
-    useState<Date>(hojeNorm);
+  // Cliente filtrado
+  const [clienteSelecionado, setClienteSelecionado] = useState<ClienteRow | null>(null);
+  const [clientesModalVisivel, setClientesModalVisivel] = useState(false);
+  const [clientes, setClientes] = useState<ClienteRow[]>([]);
+  const [buscaCliente, setBuscaCliente] = useState('');
 
-  const [carregando, setCarregando] = useState(false);
-
-  const [totalVendas, setTotalVendas] = useState(0);
-  const [totalRecebido, setTotalRecebido] = useState(0);
-  const [totalEmAberto, setTotalEmAberto] = useState(0);
-  const [lucroVendas, setLucroVendas] = useState(0);
-  const [qtdVendas, setQtdVendas] = useState(0);
-
-  const [totalCompras, setTotalCompras] = useState(0);
-  const [qtdCompras, setQtdCompras] = useState(0);
-
-  const lucroLiquido = lucroVendas - totalCompras;
-
-  const obterIntervaloDatas = (): { inicio: Date; fim: Date } => {
-    const hoje = normalizarData(new Date());
-    const ano = hoje.getFullYear();
-    const mes = hoje.getMonth();
-
-    switch (periodoRapido) {
-      case 'hoje': {
-        return { inicio: hoje, fim: hoje };
-      }
-      case 'ontem': {
-        const ontem = new Date(hoje);
-        ontem.setDate(hoje.getDate() - 1);
-        return { inicio: ontem, fim: ontem };
-      }
-      case 'semana': {
-        // semana atual (seg → hoje)
-        const diaSemana = hoje.getDay(); // 0 = domingo
-        const diffSeg = (diaSemana + 6) % 7; // segunda-feira
-        const inicio = new Date(hoje);
-        inicio.setDate(hoje.getDate() - diffSeg);
-        return { inicio, fim: hoje };
-      }
-      case 'mes_atual': {
-        const inicio = new Date(ano, mes, 1);
-        const fim = new Date(ano, mes + 1, 0);
-        return { inicio, fim };
-      }
-      case 'mes_passado': {
-        const inicio = new Date(ano, mes - 1, 1);
-        const fim = new Date(ano, mes, 0);
-        return { inicio, fim };
-      }
-      case 'ano': {
-        const inicio = new Date(ano, 0, 1);
-        const fim = new Date(ano, 11, 31);
-        return { inicio, fim };
-      }
-      case 'personalizado': {
-        let inicio = normalizarData(dataInicioPersonalizado);
-        let fim = normalizarData(dataFimPersonalizado);
-        if (fim < inicio) {
-          // se usuário inverter as datas, a gente corrige
-          const tmp = inicio;
-          inicio = fim;
-          fim = tmp;
-        }
-        return { inicio, fim };
-      }
-      default:
-        return { inicio: primeiroDiaMes, fim: ultimoDiaMes };
+  // -----------------------------
+  // Carregar clientes para filtro
+  // -----------------------------
+  const carregarClientes = async (filtro: string = '') => {
+    try {
+      const like = `%${filtro.trim()}%`;
+      const lista = await db.getAllAsync<ClienteRow>(
+        `
+          SELECT id, nome, telefone
+          FROM clientes
+          WHERE nome LIKE ?
+          ORDER BY nome ASC;
+        `,
+        [like]
+      );
+      setClientes(Array.isArray(lista) ? lista.filter(Boolean) : []);
+    } catch (error) {
+      console.log('Erro ao carregar clientes para relatório:', error);
     }
   };
 
-  const abrirDatePickerInicio = () => {
-    DateTimePickerAndroid.open({
-      mode: 'date',
-      value: dataInicioPersonalizado,
-      onChange: (_event, date) => {
-        if (date) {
-          setDataInicioPersonalizado(normalizarData(date));
-        }
-      },
-    });
+  const abrirModalClientes = async () => {
+    setBuscaCliente('');
+    await carregarClientes('');
+    setClientesModalVisivel(true);
   };
 
-  const abrirDatePickerFim = () => {
-    DateTimePickerAndroid.open({
-      mode: 'date',
-      value: dataFimPersonalizado,
-      onChange: (_event, date) => {
-        if (date) {
-          setDataFimPersonalizado(normalizarData(date));
-        }
-      },
-    });
+  const fecharModalClientes = () => {
+    setClientesModalVisivel(false);
   };
 
-  const carregarResumo = async () => {
+  const selecionarCliente = (c: ClienteRow | null) => {
+    setClienteSelecionado(c);
+    setClientesModalVisivel(false);
+  };
+
+  // -----------------------------
+  // Carregar vendas / resumo
+  // -----------------------------
+  const carregarRelatorio = async () => {
     try {
-      setCarregando(true);
-
-      const { inicio, fim } = obterIntervaloDatas();
-      const inicioN = normalizarData(inicio);
-      const fimN = normalizarData(fim);
-
-      const listaVendas = await db.getAllAsync<VendaRow>(
+      // Busca todas vendas cadastradas
+      const lista = await db.getAllAsync<VendaRow>(
         `
-          SELECT id, data, descricao, valor, lucro, status
-          FROM vendas;
+          SELECT id, data, descricao, valor, custo, lucro, tipo, status, cliente
+          FROM vendas
+          ORDER BY id DESC;
         `
       );
 
-      const listaCompras = await db.getAllAsync<CompraRow>(
-        `
-          SELECT id, data, descricao, categoria, fornecedor, valor
-          FROM compras;
-        `
-      );
+      const inicio = new Date(
+        dataInicio.getFullYear(),
+        dataInicio.getMonth(),
+        dataInicio.getDate(),
+        0,
+        0,
+        0,
+        0
+      ).getTime();
+      const fim = new Date(
+        dataFim.getFullYear(),
+        dataFim.getMonth(),
+        dataFim.getDate(),
+        23,
+        59,
+        59,
+        999
+      ).getTime();
 
-      // filtrar por período em memória
-      const vendasFiltradas = (Array.isArray(listaVendas)
-        ? listaVendas.filter(Boolean)
-        : []
-      ).filter((v) => {
-        const d = parseDataBanco(v.data);
+      const filtradas = (lista || []).filter((v) => {
+        if (!v?.data) return false;
+        const d = parseDateBRToDate(v.data);
         if (!d) return false;
-        const dn = normalizarData(d);
-        return dn >= inicioN && dn <= fimN;
+        const time = d.getTime();
+        if (time < inicio || time > fim) return false;
+
+        // filtro por cliente (se definido)
+        if (clienteSelecionado?.nome) {
+          return (v.cliente || '').trim() === clienteSelecionado.nome.trim();
+        }
+
+        return true;
       });
 
-      const comprasFiltradas = (Array.isArray(listaCompras)
-        ? listaCompras.filter(Boolean)
-        : []
-      ).filter((c) => {
-        const d = parseDataBanco(c.data);
-        if (!d) return false;
-        const dn = normalizarData(d);
-        return dn >= inicioN && dn <= fimN;
+      setVendas(filtradas);
+
+      let receita = 0;
+      let custo = 0;
+      let lucro = 0;
+
+      filtradas.forEach((v) => {
+        receita += Number(v.valor) || 0;
+        custo += Number(v.custo) || 0;
+        lucro += Number(v.lucro) || 0;
       });
 
-      // agregados de vendas
-      const totalV = vendasFiltradas.reduce(
-        (acc, v) => acc + (v.valor || 0),
-        0
-      );
-      const totalL = vendasFiltradas.reduce(
-        (acc, v) => acc + (v.lucro || 0),
-        0
-      );
-      const totalRec = vendasFiltradas.reduce((acc, v) => {
-        const s = (v.status || '').toLowerCase();
-        if (s === 'paga' || s === 'pago' || s === 'entregue') {
-          return acc + (v.valor || 0);
-        }
-        return acc;
-      }, 0);
-      const totalAberto = vendasFiltradas.reduce((acc, v) => {
-        const s = (v.status || '').toLowerCase();
-        if (s === 'feita' || s === 'pronta') {
-          return acc + (v.valor || 0);
-        }
-        return acc;
-      }, 0);
-
-      // agregados de compras
-      const totalC = comprasFiltradas.reduce(
-        (acc, c) => acc + (c.valor || 0),
-        0
-      );
-
-      setTotalVendas(totalV);
-      setLucroVendas(totalL);
-      setTotalRecebido(totalRec);
-      setTotalEmAberto(totalAberto);
-      setQtdVendas(vendasFiltradas.length);
-
-      setTotalCompras(totalC);
-      setQtdCompras(comprasFiltradas.length);
+      setTotalReceita(receita);
+      setTotalCusto(custo);
+      setTotalLucro(lucro);
     } catch (error) {
-      console.log('Erro ao carregar resumo de relatórios:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os relatórios.');
-    } finally {
-      setCarregando(false);
+      console.log('Erro ao carregar relatórios:', error);
     }
   };
 
   useEffect(() => {
-    carregarResumo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodoRapido, dataInicioPersonalizado, dataFimPersonalizado]);
+    carregarRelatorio();
+  }, [dataInicio, dataFim, clienteSelecionado]);
 
-  const { inicio, fim } = obterIntervaloDatas();
-  const periodoLabel = `${formatarDataBR(inicio)} até ${formatarDataBR(fim)}`;
+  const onChangeInicio = (_: any, selected?: Date) => {
+    setMostraPickerInicio(false);
+    if (selected) setDataInicio(selected);
+  };
 
-  const formatMoney = (v: number) =>
-    `R$ ${v.toFixed(2).replace('.', ',')}`;
-
-  const lucroPositivo = lucroLiquido >= 0;
+  const onChangeFim = (_: any, selected?: Date) => {
+    setMostraPickerFim(false);
+    if (selected) setDataFim(selected);
+  };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <FadeInView>
-          <AppHeader titulo="Relatórios e Caixa" />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scroll}
+      keyboardShouldPersistTaps="handled"
+    >
+      <FadeInView>
+        <AppHeader titulo="Relatórios" />
 
-          {/* FILTROS DE PERÍODO */}
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Período</Text>
+        {/* CARD FILTROS */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Filtros</Text>
 
-            <View style={styles.filtroLinha}>
-              {(
-                [
-                  { id: 'hoje', label: 'Hoje' },
-                  { id: 'ontem', label: 'Ontem' },
-                  { id: 'semana', label: 'Esta semana' },
-                  { id: 'mes_atual', label: 'Mês atual' },
-                  { id: 'mes_passado', label: 'Mês passado' },
-                  { id: 'ano', label: 'Ano' },
-                  { id: 'personalizado', label: 'Personalizado' },
-                ] as { id: PeriodoRapido; label: string }[]
-              ).map((p) => {
-                const ativo = periodoRapido === p.id;
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={[
-                      styles.filtroBotao,
-                      ativo && styles.filtroBotaoAtivo,
-                    ]}
-                    onPress={() => setPeriodoRapido(p.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.filtroBotaoTexto,
-                        ativo && styles.filtroBotaoTextoAtivo,
-                      ]}
-                    >
-                      {p.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {periodoRapido === 'personalizado' && (
-              <View style={{ marginTop: 8 }}>
-                <Text style={styles.label}>Selecionar datas</Text>
-                <View style={{ flexDirection: 'row' }}>
-                  <View style={styles.filtroCampo}>
-                    <TouchableOpacity
-                      style={styles.filtroDataBotao}
-                      onPress={abrirDatePickerInicio}
-                    >
-                      <MaterialCommunityIcons
-                        name="calendar-start"
-                        size={18}
-                        color="#e5e7eb"
-                      />
-                      <Text style={styles.filtroDataTexto}>
-                        {formatarDataBR(dataInicioPersonalizado)}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.filtroCampo}>
-                    <TouchableOpacity
-                      style={styles.filtroDataBotao}
-                      onPress={abrirDatePickerFim}
-                    >
-                      <MaterialCommunityIcons
-                        name="calendar-end"
-                        size={18}
-                        color="#e5e7eb"
-                      />
-                      <Text style={styles.filtroDataTexto}>
-                        {formatarDataBR(dataFimPersonalizado)}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.resumoLinha}>
-                Período selecionado:{' '}
-                <Text style={styles.resumoValor}>{periodoLabel}</Text>
-              </Text>
-            </View>
-
+          <Text style={styles.label}>Período</Text>
+          <View style={styles.filtrosLinha}>
             <TouchableOpacity
-              style={[styles.botaoSecundario, { marginTop: 12 }]}
-              onPress={carregarResumo}
+              style={[styles.inputDate, { flex: 1 }]}
+              onPress={() => setMostraPickerInicio(true)}
             >
               <MaterialCommunityIcons
-                name="refresh"
+                name="calendar-start"
                 size={18}
                 color="#e5e7eb"
                 style={styles.botaoIcon}
               />
-              <Text style={styles.botaoSecundarioTexto}>
-                {carregando ? 'Atualizando...' : 'Recalcular resumo'}
+              <Text style={styles.inputDateText}>
+                Início: {formatDateBR(dataInicio)}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.inputDate, { flex: 1 }]}
+              onPress={() => setMostraPickerFim(true)}
+            >
+              <MaterialCommunityIcons
+                name="calendar-end"
+                size={18}
+                color="#e5e7eb"
+                style={styles.botaoIcon}
+              />
+              <Text style={styles.inputDateText}>
+                Fim: {formatDateBR(dataFim)}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* RESUMO DE VENDAS */}
-          <View style={styles.resumoCard}>
-            <Text style={styles.resumoTitulo}>Vendas no período</Text>
-            <Text style={styles.resumoValorGrande}>
-              {formatMoney(totalVendas)}
-            </Text>
+          {mostraPickerInicio && (
+            <DateTimePicker
+              value={dataInicio}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onChangeInicio}
+            />
+          )}
 
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Recebido (pago/entregue)</Text>
-              <Text style={styles.resumoValorLinha}>
-                {formatMoney(totalRecebido)}
-              </Text>
-            </View>
+          {mostraPickerFim && (
+            <DateTimePicker
+              value={dataFim}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onChangeFim}
+            />
+          )}
 
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Em aberto (feita/pronta)</Text>
-              <Text style={styles.resumoValorLinha}>
-                {formatMoney(totalEmAberto)}
-              </Text>
-            </View>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Lucro das vendas</Text>
-              <Text style={styles.resumoValorLinha}>
-                {formatMoney(lucroVendas)}
-              </Text>
-            </View>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Quantidade de vendas</Text>
-              <Text style={styles.resumoValorLinha}>{qtdVendas}</Text>
-            </View>
-          </View>
-
-          {/* RESUMO DE COMPRAS */}
-          <View style={styles.resumoCard}>
-            <Text style={styles.resumoTitulo}>Compras no período</Text>
-            <Text style={styles.resumoValorGrande}>
-              {formatMoney(totalCompras)}
-            </Text>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Quantidade de compras</Text>
-              <Text style={styles.resumoValorLinha}>{qtdCompras}</Text>
-            </View>
-          </View>
-
-          {/* CAIXA / LUCRO LÍQUIDO */}
-          <View style={styles.resumoCard}>
-            <Text style={styles.resumoTitulo}>Caixa / Lucro líquido</Text>
-
-            <Text
-              style={[
-                styles.resumoValorGrande,
-                lucroPositivo
-                  ? styles.resumoBadgePositivo
-                  : styles.resumoBadgeNegativo,
-              ]}
+          {/* Filtro de Cliente */}
+          <Text style={[styles.label, { marginTop: 12 }]}>Cliente</Text>
+          <View style={styles.filtrosLinha}>
+            <TouchableOpacity
+              style={[styles.inputDate, { flex: 1 }]}
+              onPress={abrirModalClientes}
             >
-              {formatMoney(lucroLiquido)}
-            </Text>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Lucro das vendas</Text>
-              <Text style={styles.resumoValorLinha}>
-                {formatMoney(lucroVendas)}
+              <MaterialCommunityIcons
+                name="account-search"
+                size={18}
+                color="#e5e7eb"
+                style={styles.botaoIcon}
+              />
+              <Text style={styles.inputDateText}>
+                {clienteSelecionado ? clienteSelecionado.nome : 'Todos'}
               </Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>(-) Compras / custos</Text>
-              <Text style={styles.resumoValorLinha}>
-                {formatMoney(totalCompras)}
-              </Text>
-            </View>
-
-            <View style={[styles.resumoRow, { marginTop: 8 }]}>
-              <Text style={styles.resumoLabel}>Resultado líquido</Text>
-              <Text
-                style={[
-                  styles.resumoValorLinha,
-                  lucroPositivo
-                    ? styles.resumoBadgePositivo
-                    : styles.resumoBadgeNegativo,
-                ]}
+            {clienteSelecionado && (
+              <TouchableOpacity
+                style={[styles.botaoSecundario, { flexShrink: 0 }]}
+                onPress={() => selecionarCliente(null)}
               >
-                {lucroPositivo ? 'Lucro' : 'Prejuízo'}
-              </Text>
+                <MaterialCommunityIcons
+                  name="close-circle-outline"
+                  size={18}
+                  color="#e5e7eb"
+                  style={styles.botaoIcon}
+                />
+                <Text style={styles.botaoSecundarioTexto}>Limpar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Botão manual pra recarregar, caso queira forçar */}
+          <TouchableOpacity
+            style={[styles.botaoSecundario, { marginTop: 12 }]}
+            onPress={carregarRelatorio}
+          >
+            <MaterialCommunityIcons
+              name="reload"
+              size={18}
+              color="#e5e7eb"
+              style={styles.botaoIcon}
+            />
+            <Text style={styles.botaoSecundarioTexto}>Atualizar</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* CARD RESUMO */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Resumo do período</Text>
+
+          <Text style={styles.vendaDataValor}>
+            Total de vendas:{' '}
+            <Text style={styles.valorDestaque}>{vendas.length}</Text>
+          </Text>
+          <Text style={styles.vendaDataValor}>
+            Receita:{' '}
+            <Text style={styles.valorDestaque}>
+              R$ {totalReceita.toFixed(2).replace('.', ',')}
+            </Text>
+          </Text>
+          <Text style={styles.vendaDataValor}>
+            Custo:{' '}
+            <Text style={styles.valorDestaque}>
+              R$ {totalCusto.toFixed(2).replace('.', ',')}
+            </Text>
+          </Text>
+          <Text style={styles.vendaDataValor}>
+            Lucro:{' '}
+            <Text style={styles.valorDestaque}>
+              R$ {totalLucro.toFixed(2).replace('.', ',')}
+            </Text>
+          </Text>
+        </View>
+
+        {/* LISTA DE VENDAS */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Vendas no período</Text>
+
+          {vendas.length === 0 ? (
+            <Text style={styles.listaVaziaTexto}>
+              Nenhuma venda encontrada com esses filtros.
+            </Text>
+          ) : (
+            vendas.map((venda) => (
+              <View key={venda.id} style={styles.vendaLinha}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.vendaDescricao}>{venda.descricao}</Text>
+                  <Text style={styles.vendaDataValor}>
+                    Data: {venda.data} • Tipo: {venda.tipo} • Status:{' '}
+                    {venda.status}
+                  </Text>
+                  {venda.cliente ? (
+                    <Text style={styles.vendaDataValor}>
+                      Cliente: {venda.cliente}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.vendaDataValor}>
+                    Valor: R${' '}
+                    {Number(venda.valor).toFixed(2).replace('.', ',')} • Custo:
+                    R${' '}
+                    {Number(venda.custo).toFixed(2).replace('.', ',')} • Lucro:
+                    R${' '}
+                    {Number(venda.lucro).toFixed(2).replace('.', ',')}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </FadeInView>
+
+      {/* MODAL DE CLIENTES PARA FILTRO */}
+      <Modal
+        visible={clientesModalVisivel}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalClientes}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Filtrar por cliente</Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Buscar por nome"
+              placeholderTextColor="#9ca3af"
+              value={buscaCliente}
+              onChangeText={async (text) => {
+                setBuscaCliente(text);
+                await carregarClientes(text);
+              }}
+            />
+
+            <ScrollView
+              style={{ maxHeight: 260, marginTop: 12 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* opção "Todos" */}
+              <TouchableOpacity
+                style={styles.clienteRow}
+                onPress={() => selecionarCliente(null)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clienteNome}>Todos os clientes</Text>
+                  <Text style={styles.clienteTelefone}>
+                    Não aplicar filtro por cliente
+                  </Text>
+                </View>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={22}
+                  color="#9ca3af"
+                />
+              </TouchableOpacity>
+
+              {clientes.length === 0 ? (
+                <Text style={styles.listaVaziaTexto}>
+                  Nenhum cliente encontrado.
+                </Text>
+              ) : (
+                clientes.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.clienteRow}
+                    onPress={() => selecionarCliente(c)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.clienteNome}>{c.nome}</Text>
+                      {c.telefone ? (
+                        <Text style={styles.clienteTelefone}>
+                          {c.telefone}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={22}
+                      color="#9ca3af"
+                    />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={fecharModalClientes}
+              >
+                <Text
+                  style={[
+                    styles.modalButtonText,
+                    styles.modalButtonTextCancel,
+                  ]}
+                >
+                  Fechar
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </FadeInView>
-      </ScrollView>
-    </View>
+        </View>
+      </Modal>
+    </ScrollView>
   );
 };
 
