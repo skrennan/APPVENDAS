@@ -1,5 +1,6 @@
 // @ts-nocheck
-import React, { useEffect, useState , useRef} from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, PanResponder } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -9,7 +10,6 @@ import {
   useSQLiteContext,
   type SQLiteDatabase,
 } from 'expo-sqlite';
-import { View, PanResponder } from 'react-native';
 
 import VendasScreen from './src/screens/VendasScreen';
 import RelatoriosScreen from './src/screens/RelatoriosScreen';
@@ -18,6 +18,7 @@ import OrcamentoScreen from './src/screens/OrcamentoScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import StatusVendasScreen from './src/screens/StatusVendasScreen';
 import ComprasScreen from './src/screens/ComprasScreen';
+import ClientesScreen from './src/screens/ClientesScreen';
 import type { LojaConfig } from './src/utils';
 
 const Tab = createBottomTabNavigator();
@@ -35,7 +36,18 @@ async function migrateDbIfNeeded(db: SQLiteDatabase) {
       valor REAL NOT NULL,
       custo REAL NOT NULL,
       lucro REAL NOT NULL,
-      status TEXT NOT NULL DEFAULT 'FEITA'
+      status TEXT NOT NULL DEFAULT 'feita',
+      cliente TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS venda_itens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      venda_id INTEGER NOT NULL,
+      descricao TEXT NOT NULL,
+      tipo TEXT NOT NULL,
+      valor REAL NOT NULL,
+      custo REAL NOT NULL,
+      FOREIGN KEY (venda_id) REFERENCES vendas(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS metas (
@@ -63,27 +75,38 @@ async function migrateDbIfNeeded(db: SQLiteDatabase) {
       valor REAL NOT NULL,
       observacoes TEXT
     );
-        -- Tabela de clientes
+
     CREATE TABLE IF NOT EXISTS clientes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT NOT NULL,
       telefone TEXT,
       observacoes TEXT
     );
-
   `);
 
   // caso a tabela vendas seja antiga sem status, tenta adicionar
   try {
     await db.execAsync(`
-      ALTER TABLE vendas ADD COLUMN status TEXT NOT NULL DEFAULT 'FEITA';
+      ALTER TABLE vendas ADD COLUMN status TEXT NOT NULL DEFAULT 'feita';
     `);
-  } catch (error) {
-    console.log('Coluna status já existe ou erro ao adicionar:', error);
+  } catch (_error) {
+    // coluna já existe, tudo bem
+  }
+
+  // caso a tabela vendas seja antiga sem cliente, tenta adicionar
+  try {
+    await db.execAsync(`
+      ALTER TABLE vendas ADD COLUMN cliente TEXT;
+    `);
+  } catch (_error) {
+    // coluna já existe, tudo bem
   }
 }
+
+// ordem das abas para o swipe lateral
 const TAB_ORDER = [
   'Vendas',
+  'Clientes',
   'Status',
   'Relatorios',
   'Metas',
@@ -98,7 +121,6 @@ function withSwipeTabs<P>(
   return (props: any) => {
     const panResponder = useRef(
       PanResponder.create({
-        // decide quando começar a capturar o gesto
         onMoveShouldSetPanResponder: (_evt, gestureState) =>
           Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dy) < 15,
         onPanResponderRelease: (_evt, gestureState) => {
@@ -131,12 +153,12 @@ function withSwipeTabs<P>(
 
 // versões das telas com swipe habilitado
 const VendasWithSwipe = withSwipeTabs(VendasScreen, 'Vendas');
+const ClientesWithSwipe = withSwipeTabs(ClientesScreen, 'Clientes');
 const StatusWithSwipe = withSwipeTabs(StatusVendasScreen, 'Status');
 const RelatoriosWithSwipe = withSwipeTabs(RelatoriosScreen, 'Relatorios');
 const MetasWithSwipe = withSwipeTabs(MetasRelatoriosScreen, 'Metas');
 const OrcamentoWithSwipe = withSwipeTabs(OrcamentoScreen, 'Orcamento');
 const ComprasWithSwipe = withSwipeTabs(ComprasScreen, 'Compras');
-
 
 const MainTabs: React.FC = () => {
   return (
@@ -150,9 +172,10 @@ const MainTabs: React.FC = () => {
         tabBarActiveTintColor: '#4e9bff',
         tabBarInactiveTintColor: '#999',
         tabBarIcon: ({ color, size }) => {
-          let iconName = 'dots-horizontal-circle-outline';
+          let iconName: string = 'dots-horizontal-circle-outline';
 
           if (route.name === 'Vendas') iconName = 'cart-plus';
+          if (route.name === 'Clientes') iconName = 'account-group';
           if (route.name === 'Status') iconName = 'progress-check';
           if (route.name === 'Relatorios') iconName = 'file-chart-outline';
           if (route.name === 'Metas') iconName = 'target';
@@ -170,36 +193,41 @@ const MainTabs: React.FC = () => {
       })}
     >
       <Tab.Screen
-  name="Vendas"
-  component={VendasWithSwipe}
-  options={{ title: 'Vendas' }}
-  />
-      <Tab.Screen
-  name="Status"
-  component={StatusWithSwipe}
-  options={{ title: 'Status' }}
-  />
-      <Tab.Screen
-  name="Relatorios"
-  component={RelatoriosWithSwipe}
-  options={{ title: 'Relatórios' }}
-  />
-      <Tab.Screen
-  name="Metas"
-  component={MetasWithSwipe}
-  options={{ title: 'Metas' }}
-  />
-      <Tab.Screen
-  name="Orcamento"
-  component={OrcamentoWithSwipe}
-  options={{ title: 'Orçamentos' }}
-  />
-      <Tab.Screen
-  name="Compras"
-  component={ComprasWithSwipe}
-  options={{ title: 'Compras' }}
+        name="Vendas"
+        component={VendasWithSwipe}
+        options={{ title: 'Vendas' }}
       />
-      </Tab.Navigator>
+      <Tab.Screen
+        name="Clientes"
+        component={ClientesWithSwipe}
+        options={{ title: 'Clientes' }}
+      />
+      <Tab.Screen
+        name="Status"
+        component={StatusWithSwipe}
+        options={{ title: 'Status' }}
+      />
+      <Tab.Screen
+        name="Relatorios"
+        component={RelatoriosWithSwipe}
+        options={{ title: 'Relatórios' }}
+      />
+      <Tab.Screen
+        name="Metas"
+        component={MetasWithSwipe}
+        options={{ title: 'Metas' }}
+      />
+      <Tab.Screen
+        name="Orcamento"
+        component={OrcamentoWithSwipe}
+        options={{ title: 'Orçamentos' }}
+      />
+      <Tab.Screen
+        name="Compras"
+        component={ComprasWithSwipe}
+        options={{ title: 'Compras' }}
+      />
+    </Tab.Navigator>
   );
 };
 
