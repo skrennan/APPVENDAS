@@ -731,4 +731,52 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textMuted,
   },
+    // linha de input com ícone à esquerda
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  inputIconLeft: {
+    marginRight: 8,
+  },
+
+  clienteActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 10,
+  },
+
+  // estilos do modal de clientes
+  modalInput: {
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#e5e7eb',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+    fontSize: 14,
+  },
+  clienteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#020617',
+    borderRadius: 14,
+    marginBottom: 8,
+  },
+  clienteNome: {
+    color: '#e5e7eb',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  clienteTelefone: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 2,
+  },
+
 });

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState , useRef} from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -9,6 +9,7 @@ import {
   useSQLiteContext,
   type SQLiteDatabase,
 } from 'expo-sqlite';
+import { View, PanResponder } from 'react-native';
 
 import VendasScreen from './src/screens/VendasScreen';
 import RelatoriosScreen from './src/screens/RelatoriosScreen';
@@ -62,6 +63,14 @@ async function migrateDbIfNeeded(db: SQLiteDatabase) {
       valor REAL NOT NULL,
       observacoes TEXT
     );
+        -- Tabela de clientes
+    CREATE TABLE IF NOT EXISTS clientes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      telefone TEXT,
+      observacoes TEXT
+    );
+
   `);
 
   // caso a tabela vendas seja antiga sem status, tenta adicionar
@@ -73,6 +82,61 @@ async function migrateDbIfNeeded(db: SQLiteDatabase) {
     console.log('Coluna status já existe ou erro ao adicionar:', error);
   }
 }
+const TAB_ORDER = [
+  'Vendas',
+  'Status',
+  'Relatorios',
+  'Metas',
+  'Orcamento',
+  'Compras',
+] as const;
+
+function withSwipeTabs<P>(
+  WrappedComponent: React.ComponentType<P>,
+  routeName: (typeof TAB_ORDER)[number]
+) {
+  return (props: any) => {
+    const panResponder = useRef(
+      PanResponder.create({
+        // decide quando começar a capturar o gesto
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dy) < 15,
+        onPanResponderRelease: (_evt, gestureState) => {
+          const { dx } = gestureState;
+          const currentIndex = TAB_ORDER.indexOf(routeName);
+          const navigation = props.navigation;
+
+          // arrastou pra esquerda -> próxima aba
+          if (dx < -50 && currentIndex < TAB_ORDER.length - 1) {
+            const next = TAB_ORDER[currentIndex + 1];
+            navigation?.navigate(next as never);
+          }
+
+          // arrastou pra direita -> aba anterior
+          if (dx > 50 && currentIndex > 0) {
+            const prev = TAB_ORDER[currentIndex - 1];
+            navigation?.navigate(prev as never);
+          }
+        },
+      })
+    ).current;
+
+    return (
+      <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+        <WrappedComponent {...(props as P)} />
+      </View>
+    );
+  };
+}
+
+// versões das telas com swipe habilitado
+const VendasWithSwipe = withSwipeTabs(VendasScreen, 'Vendas');
+const StatusWithSwipe = withSwipeTabs(StatusVendasScreen, 'Status');
+const RelatoriosWithSwipe = withSwipeTabs(RelatoriosScreen, 'Relatorios');
+const MetasWithSwipe = withSwipeTabs(MetasRelatoriosScreen, 'Metas');
+const OrcamentoWithSwipe = withSwipeTabs(OrcamentoScreen, 'Orcamento');
+const ComprasWithSwipe = withSwipeTabs(ComprasScreen, 'Compras');
+
 
 const MainTabs: React.FC = () => {
   return (
@@ -106,36 +170,36 @@ const MainTabs: React.FC = () => {
       })}
     >
       <Tab.Screen
-        name="Vendas"
-        component={VendasScreen}
-        options={{ title: 'Vendas' }}
-      />
+  name="Vendas"
+  component={VendasWithSwipe}
+  options={{ title: 'Vendas' }}
+  />
       <Tab.Screen
-        name="Status"
-        component={StatusVendasScreen}
-        options={{ title: 'Status' }}
-      />
+  name="Status"
+  component={StatusWithSwipe}
+  options={{ title: 'Status' }}
+  />
       <Tab.Screen
-        name="Relatorios"
-        component={RelatoriosScreen}
-        options={{ title: 'Relatórios' }}
-      />
+  name="Relatorios"
+  component={RelatoriosWithSwipe}
+  options={{ title: 'Relatórios' }}
+  />
       <Tab.Screen
-        name="Metas"
-        component={MetasRelatoriosScreen}
-        options={{ title: 'Metas' }}
-      />
+  name="Metas"
+  component={MetasWithSwipe}
+  options={{ title: 'Metas' }}
+  />
       <Tab.Screen
-        name="Orcamento"
-        component={OrcamentoScreen}
-        options={{ title: 'Orçamentos' }}
-      />
+  name="Orcamento"
+  component={OrcamentoWithSwipe}
+  options={{ title: 'Orçamentos' }}
+  />
       <Tab.Screen
-        name="Compras"
-        component={ComprasScreen}
-        options={{ title: 'Compras' }}
+  name="Compras"
+  component={ComprasWithSwipe}
+  options={{ title: 'Compras' }}
       />
-    </Tab.Navigator>
+      </Tab.Navigator>
   );
 };
 

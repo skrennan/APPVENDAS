@@ -5,9 +5,8 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
-  Modal,
   Alert,
+  Modal,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,230 +15,246 @@ import AppHeader from '../components/AppHeader';
 import FadeInView from '../components/FadeInView';
 import { styles } from '../styles';
 
-type FiltroStatus = 'todas' | 'feita' | 'pronta' | 'paga' | 'entregue';
+type StatusVenda = 'feita' | 'pronta' | 'paga' | 'entregue';
 
 type VendaRow = {
   id: number;
-  descricao?: string | null;
-  valor?: number | null;
-  data?: string | null;
-  status?: string | null;
-  tipo?: string | null;
-  lucro?: number | null;
-  custo?: number | null;
-};
-
-type Venda = {
-  id: number;
-  titulo: string;   // o que aparece como "cliente" na lista
+  data: string;
   descricao: string;
   valor: number;
-  data: string;
-  status: string;
+  lucro: number;
+  status: StatusVenda;
+  cliente?: string | null;
+};
+
+type ItemVendaRow = {
+  id: number;
+  descricao: string;
+  tipo: string;
+  valor: number;
+  custo: number;
+};
+
+type FiltroStatus = 'todas' | StatusVenda;
+
+const statusLabel = (status: StatusVenda): string => {
+  switch (status) {
+    case 'feita':
+      return 'Feita';
+    case 'pronta':
+      return 'Pronta';
+    case 'paga':
+      return 'Paga';
+    case 'entregue':
+      return 'Entregue';
+    default:
+      return status;
+  }
 };
 
 const StatusVendasScreen: React.FC = () => {
   const db = useSQLiteContext();
-  const [vendas, setVendas] = useState<Venda[]>([]);
-  const [carregando, setCarregando] = useState(false);
 
+  const [vendas, setVendas] = useState<VendaRow[]>([]);
+  const [carregando, setCarregando] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todas');
 
-  // modal de confirmação
-  const [modalVisivel, setModalVisivel] = useState(false);
-  const [vendaSelecionada, setVendaSelecionada] = useState<Venda | null>(null);
-  const [statusDestino, setStatusDestino] = useState<string>('entregue');
-  const [alterandoStatus, setAlterandoStatus] = useState(false);
+  // modal de alteração de status
+  const [modalStatusVisivel, setModalStatusVisivel] = useState(false);
+  const [vendaSelecionada, setVendaSelecionada] = useState<VendaRow | null>(
+    null
+  );
+  const [novoStatus, setNovoStatus] = useState<StatusVenda | null>(null);
 
-  useEffect(() => {
-    carregarVendas();
-  }, []);
+  // modal de detalhes
+  const [modalDetalhesVisivel, setModalDetalhesVisivel] = useState(false);
+  const [itensVenda, setItensVenda] = useState<ItemVendaRow[]>([]);
 
-  /** Garante que exista a coluna status (caso venha de versões antigas) */
-  const garantirColunaStatus = async () => {
-    try {
-      const colunas = await db.getAllAsync<{ name: string }>(
-        'PRAGMA table_info(vendas);'
-      );
-      const temStatus = colunas.some((c) => c.name === 'status');
-      if (!temStatus) {
-        await db.execAsync(
-          `ALTER TABLE vendas ADD COLUMN status TEXT DEFAULT 'feita';`
-        );
-      }
-    } catch (error) {
-      console.log('Erro ao garantir coluna status em vendas:', error);
-    }
-  };
+  const formatMoney = (v: number) =>
+    `R$ ${v.toFixed(2).replace('.', ',')}`;
 
   const carregarVendas = async () => {
     try {
       setCarregando(true);
 
-      await garantirColunaStatus();
-
-      // 🔥 Corrigido: só colunas que existem na tabela
-      const rows = await db.getAllAsync<VendaRow>(
-        'SELECT id, descricao, valor, data, status FROM vendas ORDER BY id DESC;'
+      const lista = await db.getAllAsync<VendaRow>(
+        `
+          SELECT 
+            id, 
+            data, 
+            descricao, 
+            valor, 
+            lucro, 
+            status, 
+            cliente
+          FROM vendas
+          ORDER BY id DESC;
+        `
       );
 
-      const normalizadas: Venda[] = rows.map((r) => ({
-        id: r.id,
-        titulo:
-          r.descricao && r.descricao.trim().length > 0
-            ? r.descricao
-            : `Venda #${r.id}`,
-        descricao: '', // se quiser depois podemos usar outro campo
-        valor: r.valor ?? 0,
-        data: r.data ?? '',
-        status: (r.status ?? 'feita') as string,
-      }));
-
-      setVendas(normalizadas);
+      setVendas(Array.isArray(lista) ? lista.filter(Boolean) : []);
     } catch (error) {
-      console.log('Erro ao carregar vendas para status:', error);
+      console.log('Erro ao carregar vendas:', error);
       Alert.alert('Erro', 'Não foi possível carregar as vendas.');
     } finally {
       setCarregando(false);
     }
   };
 
-  const abrirModalConfirmacao = (venda: Venda, novoStatus: string) => {
+  useEffect(() => {
+    carregarVendas();
+  }, []);
+
+  const vendasFiltradas = vendas.filter((v) =>
+    filtroStatus === 'todas' ? true : v.status === filtroStatus
+  );
+
+  // -------------------------------
+  // MUDANÇA DE STATUS
+  // -------------------------------
+  const solicitarMudancaStatus = (venda: VendaRow, status: StatusVenda) => {
     if (venda.status === 'entregue') {
       Alert.alert(
-        'Ação bloqueada',
-        'Esta venda já está como ENTREGUE e não pode mais ser alterada.'
+        'Não é possível alterar',
+        'Esta venda já está marcada como ENTREGUE e não pode mais ser alterada.'
       );
       return;
     }
 
+    if (status === venda.status) {
+      return;
+    }
+
     setVendaSelecionada(venda);
-    setStatusDestino(novoStatus);
-    setModalVisivel(true);
+    setNovoStatus(status);
+    setModalStatusVisivel(true);
   };
 
-  const fecharModal = () => {
-    setModalVisivel(false);
+  const fecharModalStatus = () => {
+    setModalStatusVisivel(false);
     setVendaSelecionada(null);
-    setStatusDestino('entregue');
+    setNovoStatus(null);
   };
 
-  const confirmarStatus = async () => {
-    if (!vendaSelecionada) return;
+  const confirmarMudancaStatus = async () => {
+    if (!vendaSelecionada || !novoStatus) return;
 
     try {
-      setAlterandoStatus(true);
-      await db.runAsync('UPDATE vendas SET status = ? WHERE id = ?;', [
-        statusDestino,
-        vendaSelecionada.id,
-      ]);
-      fecharModal();
+      // mensagem extra se for ENTREGUE
+      if (novoStatus === 'entregue') {
+        // já teve o modal anterior avisando que é irreversível
+        // aqui só aplica
+      }
+
+      await db.runAsync(
+        `
+          UPDATE vendas
+          SET status = ?
+          WHERE id = ?;
+        `,
+        [novoStatus, vendaSelecionada.id]
+      );
+
+      fecharModalStatus();
       await carregarVendas();
+      Alert.alert('Sucesso', 'Status da venda atualizado.');
     } catch (error) {
       console.log('Erro ao atualizar status da venda:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar o status da venda.');
-    } finally {
-      setAlterandoStatus(false);
+      Alert.alert('Erro', 'Não foi possível atualizar o status.');
     }
   };
 
-  const filtrarVendas = (): Venda[] => {
-    if (filtroStatus === 'todas') return vendas;
-    return vendas.filter((v) => v.status === filtroStatus);
+  // -------------------------------
+  // DETALHES DA VENDA (itens)
+  // -------------------------------
+  const abrirDetalhesVenda = async (venda: VendaRow) => {
+    try {
+      setVendaSelecionada(venda);
+
+      const itens = await db.getAllAsync<ItemVendaRow>(
+        `
+          SELECT id, descricao, tipo, valor, custo
+          FROM venda_itens
+          WHERE venda_id = ?;
+        `,
+        [venda.id]
+      );
+
+      setItensVenda(Array.isArray(itens) ? itens.filter(Boolean) : []);
+      setModalDetalhesVisivel(true);
+    } catch (error) {
+      console.log('Erro ao carregar itens da venda:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os itens desta venda.');
+    }
   };
 
-  const getStatusLabel = (status: string) => {
+  const fecharModalDetalhes = () => {
+    setModalDetalhesVisivel(false);
+    setItensVenda([]);
+    setVendaSelecionada(null);
+  };
+
+  const getStatusBadgeStyle = (status: StatusVenda) => {
     switch (status) {
       case 'feita':
-        return 'Feita';
+        return styles.statusBadgeFeita;
       case 'pronta':
-        return 'Pronta';
+        return styles.statusBadgePronta;
       case 'paga':
-        return 'Paga';
+        return styles.statusBadgePaga;
       case 'entregue':
-        return 'Entregue';
+        return styles.statusBadgeEntregue;
       default:
-        return status;
+        return null;
     }
   };
 
-  const getStatusBadgeStyle = (status: string) => {
-    switch (status) {
-      case 'feita':
-        return [styles.statusBadge, styles.statusBadgeFeita];
-      case 'pronta':
-        return [styles.statusBadge, styles.statusBadgePronta];
-      case 'paga':
-        return [styles.statusBadge, styles.statusBadgePaga];
-      case 'entregue':
-        return [styles.statusBadge, styles.statusBadgeEntregue];
-      default:
-        return [styles.statusBadge];
-    }
-  };
-
-  const getStatusActionLabel = (status: string) => {
-    switch (status) {
-      case 'pronta':
-        return 'Marcar pronta';
-      case 'paga':
-        return 'Marcar paga';
-      case 'entregue':
-        return 'Marcar entregue';
-      default:
-        return 'Atualizar';
-    }
-  };
-
-  const formatarMoeda = (valor: number) =>
-    `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
-
-  const vendasFiltradas = filtrarVendas();
+  const getStatusBadgeText = (status: StatusVenda) => statusLabel(status);
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <FadeInView>
-          <AppHeader titulo="Status das vendas" />
+          <AppHeader titulo="Status das Vendas" />
 
-          {/* Filtros por status */}
+          {/* FILTRO POR STATUS */}
           <View style={styles.card}>
-            <Text style={styles.label}>Filtrar por status</Text>
-            <View style={styles.tipoLinha}>
-              {(['todas', 'feita', 'pronta', 'paga', 'entregue'] as FiltroStatus[]).map(
-                (st) => (
+            <Text style={styles.sectionTitle}>Filtrar por status</Text>
+            <View style={styles.filtroLinha}>
+              {(
+                [
+                  { id: 'todas', label: 'Todas' },
+                  { id: 'feita', label: 'Feita' },
+                  { id: 'pronta', label: 'Pronta' },
+                  { id: 'paga', label: 'Paga' },
+                  { id: 'entregue', label: 'Entregue' },
+                ] as { id: FiltroStatus; label: string }[]
+              ).map((f) => {
+                const ativo = filtroStatus === f.id;
+                return (
                   <TouchableOpacity
-                    key={st}
+                    key={f.id}
                     style={[
                       styles.statusFiltroChip,
-                      filtroStatus === st && styles.statusFiltroChipAtivo,
+                      ativo && styles.statusFiltroChipAtivo,
                     ]}
-                    onPress={() => setFiltroStatus(st)}
+                    onPress={() => setFiltroStatus(f.id)}
                   >
                     <Text
                       style={[
                         styles.statusFiltroTexto,
-                        filtroStatus === st && styles.statusFiltroTextoAtivo,
+                        ativo && styles.statusFiltroTextoAtivo,
                       ]}
                     >
-                      {st === 'todas'
-                        ? 'Todas'
-                        : st === 'feita'
-                        ? 'Feitas'
-                        : st === 'pronta'
-                        ? 'Prontas'
-                        : st === 'paga'
-                        ? 'Pagas'
-                        : 'Entregues'}
+                      {f.label}
                     </Text>
                   </TouchableOpacity>
-                )
-              )}
+                );
+              })}
             </View>
 
-            {/* Botão para atualizar/consultar vendas */}
             <TouchableOpacity
-              style={styles.botaoSecundario}
+              style={[styles.botaoSecundario, { marginTop: 8 }]}
               onPress={carregarVendas}
             >
               <MaterialCommunityIcons
@@ -249,95 +264,126 @@ const StatusVendasScreen: React.FC = () => {
                 style={styles.botaoIcon}
               />
               <Text style={styles.botaoSecundarioTexto}>
-                Consultar vendas
+                {carregando ? 'Atualizando...' : 'Consultar vendas'}
               </Text>
             </TouchableOpacity>
+
+            {vendasFiltradas.length === 0 && !carregando && (
+              <Text style={styles.listaVaziaTexto}>
+                Nenhuma venda encontrada para este filtro.
+              </Text>
+            )}
           </View>
 
-          {/* Lista de vendas */}
+          {/* LISTA DE VENDAS */}
           <View style={styles.card}>
-            <View style={styles.cardHeaderLinha}>
-              <MaterialCommunityIcons
-                name="clipboard-list-outline"
-                size={20}
-                color="#4e9bff"
-              />
-              <Text style={styles.cardTitulo}>Vendas registradas</Text>
-            </View>
+            <Text style={styles.sectionTitle}>Vendas</Text>
 
-            {carregando ? (
-              <ActivityIndicator size="small" color="#4e9bff" />
-            ) : vendasFiltradas.length === 0 ? (
-              <Text style={styles.listaVaziaTexto}>
-                Nenhuma venda encontrada com este filtro.
-              </Text>
-            ) : (
-              vendasFiltradas.map((venda) => (
-                <View key={venda.id} style={styles.vendaItem}>
-                  <View style={styles.vendaLinhaSuperior}>
-                    <View style={{ flex: 1 }}>
-                      {/* usamos titulo (que hoje vem de descricao) */}
-                      <Text style={styles.vendaCliente}>{venda.titulo}</Text>
-
-                      <Text style={styles.vendaDataValor}>
-                        {venda.data} · {formatarMoeda(venda.valor)}
-                      </Text>
-                    </View>
-
-                    <View style={getStatusBadgeStyle(venda.status)}>
-                      <Text style={styles.statusBadgeTexto}>
-                        {getStatusLabel(venda.status)}
-                      </Text>
-                    </View>
+            {vendasFiltradas.map((venda) => (
+              <TouchableOpacity
+                key={venda.id}
+                style={styles.vendaItem}
+                activeOpacity={0.8}
+                onPress={() => abrirDetalhesVenda(venda)}
+              >
+                <View style={styles.vendaLinhaSuperior}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.vendaCliente}>
+                      {venda.cliente?.trim() || 'Cliente não informado'}
+                    </Text>
+                    <Text style={styles.vendaDescricao}>
+                      {venda.descricao}
+                    </Text>
+                    <Text style={styles.vendaDataValor}>
+                      Data: {venda.data} • Valor: {formatMoney(venda.valor)}
+                    </Text>
                   </View>
 
-                  {/* Ações de status */}
-                  {venda.status === 'entregue' ? (
-                    <Text style={styles.vendaStatusFinalTexto}>
-                      Esta venda já foi entregue. O status não pode mais ser
-                      alterado.
-                    </Text>
-                  ) : (
-                    <View style={styles.statusActionsRow}>
-                      {(['pronta', 'paga', 'entregue'] as const).map((st) => (
-                        <TouchableOpacity
-                          key={st}
-                          style={styles.statusActionButton}
-                          onPress={() => abrirModalConfirmacao(venda, st)}
-                        >
-                          <Text style={styles.statusActionButtonText}>
-                            {getStatusActionLabel(st)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        getStatusBadgeStyle(venda.status),
+                      ]}
+                    >
+                      <Text style={styles.statusBadgeTexto}>
+                        {getStatusBadgeText(venda.status)}
+                      </Text>
                     </View>
+
+                    <Text style={[styles.vendaDataValor, { marginTop: 4 }]}>
+                      Lucro: {formatMoney(venda.lucro)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* AÇÕES DE STATUS */}
+                <View style={styles.statusActionsRow}>
+                  {(['feita', 'pronta', 'paga', 'entregue'] as StatusVenda[]).map(
+                    (s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={styles.statusActionButton}
+                        onPress={() => solicitarMudancaStatus(venda, s)}
+                      >
+                        <Text style={styles.statusActionButtonText}>
+                          {statusLabel(s)}
+                        </Text>
+                      </TouchableOpacity>
+                    )
                   )}
                 </View>
-              ))
-            )}
+
+                <Text style={styles.vendaStatusFinalTexto}>
+                  Toque na venda para ver os itens cadastrados.
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </FadeInView>
       </ScrollView>
 
-      {/* Modal de confirmação */}
-      <Modal visible={modalVisivel} transparent animationType="fade">
+      {/* MODAL DE CONFIRMAÇÃO DE STATUS */}
+      <Modal
+        visible={modalStatusVisivel}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalStatus}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirmar mudança de status</Text>
+            <Text style={styles.modalTitle}>Confirmar alteração</Text>
 
-            <Text style={styles.modalMessage}>
-              Tem certeza que deseja definir esta venda como{' '}
-              <Text style={styles.modalStatusHighlight}>
-                {getStatusLabel(statusDestino).toUpperCase()}
-              </Text>
-              ? Essa ação não poderá ser desfeita.
-            </Text>
+            {vendaSelecionada && novoStatus && (
+              <>
+                <Text style={styles.modalMessage}>
+                  Deseja realmente alterar o status da venda{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    #{vendaSelecionada.id}
+                  </Text>{' '}
+                  para{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    {statusLabel(novoStatus)}
+                  </Text>
+                  ?
+                </Text>
+
+                {novoStatus === 'entregue' && (
+                  <Text style={styles.modalMessage}>
+                    <Text style={styles.modalStatusHighlight}>
+                      Atenção:{' '}
+                    </Text>
+                    ao marcar como ENTREGUE, esta venda não poderá mais ter o
+                    status alterado.
+                  </Text>
+                )}
+              </>
+            )}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
-                onPress={fecharModal}
-                disabled={alterandoStatus}
+                onPress={fecharModalStatus}
               >
                 <Text
                   style={[
@@ -351,12 +397,91 @@ const StatusVendasScreen: React.FC = () => {
 
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonConfirm]}
-                onPress={confirmarStatus}
-                disabled={alterandoStatus}
+                onPress={confirmarMudancaStatus}
               >
-                <Text style={styles.modalButtonText}>
-                  {alterandoStatus ? 'Atualizando...' : 'Confirmar'}
+                <Text style={styles.modalButtonText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE DETALHES DA VENDA */}
+      <Modal
+        visible={modalDetalhesVisivel}
+        transparent
+        animationType="fade"
+        onRequestClose={fecharModalDetalhes}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {vendaSelecionada && (
+              <>
+                <Text style={styles.modalTitle}>
+                  Detalhes da venda #{vendaSelecionada.id}
                 </Text>
+
+                <Text style={styles.modalMessage}>
+                  Cliente:{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    {vendaSelecionada.cliente?.trim() ||
+                      'Não informado'}
+                  </Text>
+                </Text>
+                <Text style={styles.modalMessage}>
+                  Data: {vendaSelecionada.data}
+                </Text>
+                <Text style={styles.modalMessage}>
+                  Status:{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    {statusLabel(vendaSelecionada.status)}
+                  </Text>
+                </Text>
+                <Text style={styles.modalMessage}>
+                  Valor total:{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    {formatMoney(vendaSelecionada.valor)}
+                  </Text>
+                </Text>
+                <Text style={styles.modalMessage}>
+                  Lucro total:{' '}
+                  <Text style={styles.modalStatusHighlight}>
+                    {formatMoney(vendaSelecionada.lucro)}
+                  </Text>
+                </Text>
+
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.label}>Itens da venda</Text>
+                  {itensVenda.length === 0 ? (
+                    <Text style={styles.listaVaziaTexto}>
+                      Nenhum item registrado para esta venda.
+                    </Text>
+                  ) : (
+                    itensVenda.map((item) => (
+                      <View key={item.id} style={styles.orcItemRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.orcItemText}>
+                            {item.descricao}
+                          </Text>
+                          <Text style={styles.orcItemSubText}>
+                            Tipo: {item.tipo} • Valor:{' '}
+                            {formatMoney(item.valor)} • Custo:{' '}
+                            {formatMoney(item.custo)}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </>
+            )}
+
+            <View style={[styles.modalActions, { marginTop: 16 }]}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={fecharModalDetalhes}
+              >
+                <Text style={styles.modalButtonText}>Fechar</Text>
               </TouchableOpacity>
             </View>
           </View>
