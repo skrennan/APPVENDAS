@@ -9,10 +9,13 @@ import {
   Platform,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSQLiteContext } from 'expo-sqlite';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 import AppHeader from '../components/AppHeader';
 import FadeInView from '../components/FadeInView';
@@ -117,7 +120,6 @@ const RelatoriosScreen: React.FC = () => {
   // -----------------------------
   const carregarRelatorio = async () => {
     try {
-      // Busca todas vendas cadastradas
       const lista = await db.getAllAsync<VendaRow>(
         `
           SELECT id, data, descricao, valor, custo, lucro, tipo, status, cliente
@@ -152,7 +154,6 @@ const RelatoriosScreen: React.FC = () => {
         const time = d.getTime();
         if (time < inicio || time > fim) return false;
 
-        // filtro por cliente (se definido)
         if (clienteSelecionado?.nome) {
           return (v.cliente || '').trim() === clienteSelecionado.nome.trim();
         }
@@ -192,6 +193,69 @@ const RelatoriosScreen: React.FC = () => {
   const onChangeFim = (_: any, selected?: Date) => {
     setMostraPickerFim(false);
     if (selected) setDataFim(selected);
+  };
+
+  // -----------------------------------------
+  // EXPORTAR BACKUP (JSON) - TODAS AS TABELAS
+  // -----------------------------------------
+  const exportarBackup = async () => {
+    try {
+      const [loja, clientesDb, vendasDb, itensDb, comprasDb, metasDb] =
+        await Promise.all([
+          db.getAllAsync('SELECT * FROM loja_config;'),
+          db.getAllAsync('SELECT * FROM clientes;'),
+          db.getAllAsync('SELECT * FROM vendas;'),
+          db.getAllAsync('SELECT * FROM venda_itens;'),
+          db.getAllAsync('SELECT * FROM compras;'),
+          db.getAllAsync('SELECT * FROM metas;'),
+        ]);
+
+      const payload = {
+        app: 'RN2 Vendas Personalizados',
+        versao: '1.0.0',
+        geradoEm: new Date().toISOString(),
+        loja: loja || [],
+        clientes: clientesDb || [],
+        vendas: vendasDb || [],
+        venda_itens: itensDb || [],
+        compras: comprasDb || [],
+        metas: metasDb || [],
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+
+      const agora = new Date();
+      const yy = agora.getFullYear();
+      const mm = String(agora.getMonth() + 1).padStart(2, '0');
+      const dd = String(agora.getDate()).padStart(2, '0');
+      const hh = String(agora.getHours()).padStart(2, '0');
+      const mi = String(agora.getMinutes()).padStart(2, '0');
+
+      const fileName = `backup-vendas-${yy}-${mm}-${dd}_${hh}-${mi}.json`;
+      const fileUri = FileSystem.documentDirectory + fileName;
+
+      await FileSystem.writeAsStringAsync(fileUri, json, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          dialogTitle: 'Compartilhar backup de dados',
+          mimeType: 'application/json',
+        });
+      } else {
+        Alert.alert(
+          'Backup gerado',
+          `Backup salvo em:\n${fileUri}\n\nEnvie esse arquivo para um lugar seguro.`
+        );
+      }
+    } catch (error) {
+      console.log('Erro ao exportar backup:', error);
+      Alert.alert(
+        'Erro',
+        'Não foi possível gerar o backup dos dados. Tente novamente.'
+      );
+    }
   };
 
   return (
@@ -292,19 +356,36 @@ const RelatoriosScreen: React.FC = () => {
             )}
           </View>
 
-          {/* Botão manual pra recarregar, caso queira forçar */}
-          <TouchableOpacity
-            style={[styles.botaoSecundario, { marginTop: 12 }]}
-            onPress={carregarRelatorio}
-          >
-            <MaterialCommunityIcons
-              name="reload"
-              size={18}
-              color="#e5e7eb"
-              style={styles.botaoIcon}
-            />
-            <Text style={styles.botaoSecundarioTexto}>Atualizar</Text>
-          </TouchableOpacity>
+          {/* Botões: Atualizar + Backup */}
+          <View style={{ flexDirection: 'row', marginTop: 12, gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.botaoSecundario, { flex: 1 }]}
+              onPress={carregarRelatorio}
+            >
+              <MaterialCommunityIcons
+                name="reload"
+                size={18}
+                color="#e5e7eb"
+                style={styles.botaoIcon}
+              />
+              <Text style={styles.botaoSecundarioTexto}>Atualizar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.botaoSecundario, { flex: 1 }]}
+              onPress={exportarBackup}
+            >
+              <MaterialCommunityIcons
+                name="content-save"
+                size={18}
+                color="#e5e7eb"
+                style={styles.botaoIcon}
+              />
+              <Text style={styles.botaoSecundarioTexto}>
+                Exportar backup (.json)
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* CARD RESUMO */}
