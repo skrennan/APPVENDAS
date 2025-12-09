@@ -13,7 +13,7 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { styles } from '../styles';
+import  styles  from '../styles';
 import  AppHeader  from '../components/AppHeader';
 
 type MetasRow = {

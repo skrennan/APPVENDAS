@@ -19,8 +19,8 @@ import { useSQLiteContext } from 'expo-sqlite';
 // VERSÃO LEGACY DO FILE SYSTEM
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { styles } from '../styles';
-import { LojaConfig } from '../utils';
+import  styles  from '../styles';
+import  {LojaConfig}  from '../utils';
 
 const LoginScreen: React.FC = () => {
   const db = useSQLiteContext();

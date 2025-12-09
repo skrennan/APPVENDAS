@@ -197,7 +197,7 @@ const ComprasScreen: React.FC = () => {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <AppHeader titulo="Compras e Despesas" />
+        <AppHeader  titulo  =  "Compras e Despesas" />
 
         {/* NOVA COMPRA */}
         <View style={styles.card}>

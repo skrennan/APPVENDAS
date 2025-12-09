@@ -1,4 +1,5 @@
 // src/utils.ts
+import * as SQLite from 'expo-sqlite';
 
 // TIPOS DE VENDA (para VendasScreen)
 export type TipoVenda = 'LASER' | '3D' | 'OUTRO';
@@ -8,6 +9,7 @@ export const tipoIcones: Record<TipoVenda, string> = {
   '3D': 'printer-3d',          // impressão 3D
   OUTRO: 'cube-outline',       // qualquer outro tipo
 };
+export const db = SQLite.openDatabaseSync('vendas_personalizados.db');
 
 // STATUS DAS VENDAS (para StatusVendas, Relatórios, etc.)
 export type StatusVenda = 'FEITA' | 'PRONTA' | 'PAGA' | 'ENTREGUE';

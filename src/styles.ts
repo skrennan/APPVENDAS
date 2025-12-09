@@ -1,7 +1,7 @@
 // src/styles.ts
 import { StyleSheet, Platform } from 'react-native';
 
-const COLORS = {
+export const COLORS = {
   background: '#020617', // fundo geral
   card: '#030712',
   cardSoft: '#020617',
@@ -37,6 +37,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+    paddingTop: 20
   },
   scroll: {
     paddingHorizontal: 16,
@@ -44,46 +45,62 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
 
-  // -------------------------------------------
-  // HEADER / LOGO (AppHeader)
-  // -------------------------------------------
-  headerTop: {
-    alignItems: 'center',
-    marginBottom: 8,
-    paddingTop: Platform.OS === 'android' ? 16 : 24,
-  },
-  headerLogoWrapper: {
-    width: 160,
-    height: 160,
-    borderRadius: 24,
-    backgroundColor: '#020617',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.borderSoft,
-    ...SHADOW_CARD,
-  },
-  headerLogo: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  headerLogoPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerLogoPlaceholderText: {
-    color: COLORS.textMuted,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    marginTop: 16,
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.text,
-    textAlign: 'center',
-  },
+ // HEADER / LOGO
+headerTop: {
+  alignItems: 'center',
+  marginBottom: 8,
+  paddingTop: Platform.OS === 'android' ? 16 : 24,
+},
+headerLogoWrapper: {
+  width: 160,
+  height: 160,
+  borderRadius: 24,
+  backgroundColor: '#020617',
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: COLORS.borderSoft,
+  ...SHADOW_CARD,
+},
+headerLogo: {
+  width: '100%',
+  height: '100%',
+  resizeMode: 'cover',
+},
+headerLogoLarge: {   // alias pra não quebrar nada antigo
+  width: '100%',
+  height: '100%',
+  resizeMode: 'cover',
+},
+headerLogoPlaceholder: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+headerLogoPlaceholderText: {
+  color: COLORS.textMuted,
+  fontSize: 16,
+  fontWeight: '600',
+},
+headerTitle: {
+  marginTop: 16,
+  fontSize: 26,
+  fontWeight: '800',
+  color: COLORS.text,
+  textAlign: 'center',
+},
+headerSubtitle: {
+  marginTop: 2,
+  fontSize: 13,
+  color: COLORS.textMuted,
+  textAlign: 'center',
+},
+headerScreenTitle: { // alias antigo, se alguma tela ainda usar
+  marginTop: 16,
+  fontSize: 26,
+  fontWeight: '800',
+  color: COLORS.text,
+  textAlign: 'center',
+},
 
   // -------------------------------------------
   // CARDS / TEXTOS / INPUTS
@@ -170,6 +187,67 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: 'center',
   },
+    // -------------------------------------------
+  // METAS – COMPATIBILIDADE COM VERSÃO ANTIGA
+  // -------------------------------------------
+
+  // container geral que você usava como "cardRes"
+  cardRes: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: COLORS.cardSoft,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOW_CARD,
+  },
+
+  // linha onde fica a barra de progresso (se tiver)
+  barraProgressoLinha: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
+  // se em algum lugar você usava "barraProgresso",
+  // deixamos como alias pra barra de progresso nova
+  barraProgresso: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#020617',
+    overflow: 'hidden',
+  },
+
+  // texto pequeno embaixo da barra (porcentagem/meta)
+  barraProgressoTexto: {
+    marginTop: 4,
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+    // -------------------------------------------
+  // METAS – BARRA DE PROGRESSO (compat com código antigo)
+  // -------------------------------------------
+  barraContainer: {
+    marginTop: 8,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#020617',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  barraPreenchida: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+  },
+  barraLegenda: {
+    marginTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+
 
   // -------------------------------------------
   // TIPO (LASER / 3D / OUTRO / CATEGORIAS COMPRAS)
@@ -765,48 +843,73 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
 
-  // -------------------------------------------
-  // CLIENTES (ClientesScreen) – estilo “aero”
-  // -------------------------------------------
-  clienteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: COLORS.cardSoft,
-    borderRadius: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  clienteNome: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  clienteTelefone: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  clienteActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 10,
-  },
 
-  // campos no modal de cliente
-  modalInput: {
-    backgroundColor: '#111827',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: '#e5e7eb',
-    borderWidth: 1,
-    borderColor: '#1f2937',
-    fontSize: 14,
-  },
+// --- CLIENTES ---
+
+clienteActionsRow: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 10,
+  marginTop: 12,
+},
+
+modalInput: {
+  backgroundColor: COLORS.cardSoft,
+  borderRadius: 14,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  color: COLORS.text,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  fontSize: 14,
+},
+
+clienteRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 14,
+  paddingVertical: 12,
+  borderRadius: 16,
+  backgroundColor: COLORS.card,
+  borderWidth: 1,
+  borderColor: COLORS.borderSoft,
+  marginBottom: 10,
+},
+
+clienteInfo: {
+  flex: 1,
+  marginLeft: 10,
+},
+
+clienteNome: {
+  color: COLORS.text,
+  fontSize: 14,
+  fontWeight: '600',
+},
+
+clienteTelefone: {
+  color: COLORS.textMuted,
+  fontSize: 12,
+  marginTop: 2,
+},
+
+clienteObservacoes: {
+  color: COLORS.textMuted,
+  fontSize: 12,
+  marginTop: 2,
+},
+
+clienteIconWrapper: {
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: COLORS.cardSoft,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+
 });
 
 export default styles;

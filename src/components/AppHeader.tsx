@@ -1,61 +1,94 @@
 // src/components/AppHeader.tsx
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, Image } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
-import styles from '../styles';
+import  styles  from '../styles';
 
-type LojaConfig = {
-  id: number;
-  nome: string;
-  contato?: string | null;
-  observacoes?: string | null;
-  logo_uri?: string | null; // mesma coluna usada no cadastro da loja
+type LojaConfigRow = {
+  [key: string]: any;
 };
 
-const AppHeader: React.FC = () => {
-  const db = useSQLiteContext();
-  const [loja, setLoja] = useState<LojaConfig | null>(null);
+type AppHeaderProps = {
+  /** Texto do título da tela: "Registrar Vendas", "Relatórios", etc. */
+  titulo: string;
+};
 
-  useEffect(() => {
+const AppHeader: React.FC<AppHeaderProps> = ({ titulo }) => {
+  const db = useSQLiteContext();
+  const [nomeLoja, setNomeLoja] = React.useState<string>('RNN Vendas');
+  const [logoUri, setLogoUri] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
     const carregarLoja = async () => {
       try {
-        const rows = await db.getAllAsync<LojaConfig>(
+        // Pega a última configuração da loja
+        const rows = await db.getAllAsync<LojaConfigRow>(
           'SELECT * FROM loja_config ORDER BY id DESC LIMIT 1;'
         );
-        setLoja(rows[0] ?? null);
+
+        if (!isMounted) return;
+
+        const row = rows[0];
+
+        if (row) {
+          const nome =
+            (row.nome as string | undefined) ||
+            (row.nome_loja as string | undefined) ||
+            'RNN Vendas';
+
+          // tenta vários nomes de coluna possíveis para a logo
+          const possibleLogoUri =
+            (row.logo_uri as string | undefined) ||
+            (row.logoUri as string | undefined) ||
+            (row.logo_url as string | undefined) ||
+            (row.logo as string | undefined) ||
+            null;
+
+          console.log('AppHeader - loja_config carregada:', row);
+          console.log('AppHeader - logoUri detectado:', possibleLogoUri);
+
+          setNomeLoja(nome);
+          setLogoUri(possibleLogoUri);
+        } else {
+          console.log('AppHeader - nenhuma linha em loja_config');
+        }
       } catch (error) {
-        console.log('Erro ao carregar loja_config:', error);
+        console.log('Erro ao carregar loja_config no AppHeader:', error);
       }
     };
 
     carregarLoja();
+
+    return () => {
+      isMounted = false;
+    };
   }, [db]);
-
-  const titulo = loja?.nome || 'RNN Vendas';
-  const logoUri = loja?.logo_uri || null;
-
-  const temLogo = !!logoUri;
 
   return (
     <View style={styles.headerTop}>
+      {/* LOGO */}
       <View style={styles.headerLogoWrapper}>
-        {temLogo ? (
+        {logoUri ? (
           <Image
-            source={{ uri: logoUri as string }}
-            // 👉 aqui usamos headerLogo, que EXISTE no styles.ts
+            source={{ uri: logoUri }}
             style={styles.headerLogo}
           />
         ) : (
           <View style={styles.headerLogoPlaceholder}>
             <Text style={styles.headerLogoPlaceholderText}>
-              {titulo.substring(0, 3).toUpperCase()}
+              {nomeLoja.substring(0, 3).toUpperCase()}
             </Text>
           </View>
         )}
       </View>
 
-      {/* 👉 e aqui usamos headerTitle, que também existe */}
+      {/* TÍTULO DA TELA */}
       <Text style={styles.headerTitle}>{titulo}</Text>
+
+      {/* Nome da loja (subtítulo) */}
+      <Text style={styles.headerSubtitle}>{nomeLoja}</Text>
     </View>
   );
 };
