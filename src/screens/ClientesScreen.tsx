@@ -15,7 +15,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import  styles  from '../styles';
+import  styles, { COLORS }  from '../styles';
 import AppHeader from '../components/AppHeader';
 import { db } from '../utils';
 
