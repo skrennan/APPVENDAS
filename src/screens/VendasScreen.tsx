@@ -1,286 +1,400 @@
-// src/screens/VendasScreen.tsx
-import React, { useState } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import {
   View,
   Text,
+  ScrollView,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  Modal,
-  Alert,
 } from 'react-native';
-import { useSQLiteContext } from 'expo-sqlite';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import  styles  from '../styles';
-import { formatDateToBR, TipoVenda, tipoIcones } from '../utils';
-import  AppHeader  from '../components/AppHeader';
+import { DbContext } from '../../App'; // ajuste se o caminho for diferente
+import AppHeader from '../components/AppHeader';
+import { styles, COLORS } from '../styles';
+
+type StatusVenda = 'feita' | 'pronta' | 'paga' | 'entregue';
+
+type Venda = {
+  id: number;
+  data: string;
+  descricao: string;
+  tipo: 'LASER' | '3D' | 'OUTRO';
+  valor: number;
+  custo: number;
+  lucro: number;
+  status: StatusVenda;
+  cliente?: string | null;
+};
+
+type Cliente = {
+  id: number;
+  nome: string;
+  telefone?: string | null;
+  observacoes?: string | null;
+};
 
 const VendasScreen: React.FC = () => {
-  const db = useSQLiteContext();
-
-  const hoje = new Date();
-  const dataHojeISO = hoje.toISOString().slice(0, 10);
+  const { db, lojaConfig } = useContext(DbContext)!;
 
   const [descricao, setDescricao] = useState('');
-  const [tipo, setTipo] = useState<TipoVenda>('LASER');
+  const [tipo, setTipo] = useState<'LASER' | '3D' | 'OUTRO'>('LASER');
+  const [data, setData] = useState<string>(() => {
+    const hoje = new Date();
+    const d = String(hoje.getDate()).padStart(2, '0');
+    const m = String(hoje.getMonth() + 1).padStart(2, '0');
+    const a = hoje.getFullYear();
+    return `${d}/${m}/${a}`;
+  });
   const [valor, setValor] = useState('');
   const [custo, setCusto] = useState('');
-  const [dataVendaISO, setDataVendaISO] = useState(dataHojeISO);
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [previewValor, setPreviewValor] = useState(0);
-  const [previewCusto, setPreviewCusto] = useState(0);
-  const [previewLucro, setPreviewLucro] = useState(0);
+  // clientes
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clienteSelecionado, setClienteSelecionado] = useState<number | null>(null);
+  const [mostrarNovoCliente, setMostrarNovoCliente] = useState(false);
+  const [novoClienteNome, setNovoClienteNome] = useState('');
+  const [novoClienteTelefone, setNovoClienteTelefone] = useState('');
 
-  function handleDateChange(event: DateTimePickerEvent, date?: Date) {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (date) {
-      const iso = date.toISOString().slice(0, 10);
-      setDataVendaISO(iso);
+  const [salvando, setSalvando] = useState(false);
+  const [carregandoClientes, setCarregandoClientes] = useState(false);
+
+  const valorNumber = useMemo(() => Number(String(valor).replace(',', '.')) || 0, [valor]);
+  const custoNumber = useMemo(() => Number(String(custo).replace(',', '.')) || 0, [custo]);
+  const lucroNumber = useMemo(() => valorNumber - custoNumber, [valorNumber, custoNumber]);
+
+  // ------------------------------
+  // Carregar clientes
+  // ------------------------------
+  const carregarClientes = useCallback(async () => {
+    try {
+      setCarregandoClientes(true);
+      const rows = await db.getAllAsync<Cliente>('SELECT * FROM clientes ORDER BY nome;');
+      setClientes(rows);
+    } catch (error) {
+      console.log('Erro ao carregar clientes', error);
+    } finally {
+      setCarregandoClientes(false);
     }
-  }
+  }, [db]);
 
-  function validarVendaCampos():
-    | { v: number; c: number; lucro: number; dataISO: string }
-    | null {
-    const v = parseFloat(valor.replace(',', '.')) || 0;
-    const c = parseFloat(custo.replace(',', '.')) || 0;
+  useFocusEffect(
+    useCallback(() => {
+      carregarClientes();
+    }, [carregarClientes]),
+  );
 
-    if (!descricao || v <= 0) {
-      Alert.alert('Atenção', 'Preencha ao menos descrição e valor.');
-      return null;
-    }
-
-    const dataISO = dataVendaISO || dataHojeISO;
-    const lucro = v - c;
-    return { v, c, lucro, dataISO };
-  }
-
-  function abrirConfirmacaoVenda() {
-    const result = validarVendaCampos();
-    if (!result) return;
-
-    setPreviewValor(result.v);
-    setPreviewCusto(result.c);
-    setPreviewLucro(result.lucro);
-    setConfirmVisible(true);
-  }
-
-  async function confirmarVenda() {
-    const result = validarVendaCampos();
-    if (!result) {
-      setConfirmVisible(false);
+  // ------------------------------
+  // Salvar cliente rápido
+  // ------------------------------
+  const handleSalvarNovoCliente = useCallback(async () => {
+    const nome = novoClienteNome.trim();
+    if (!nome) {
+      Alert.alert('Atenção', 'Informe ao menos o nome do cliente.');
       return;
     }
 
-    const { v, c, lucro, dataISO } = result;
+    try {
+      setSalvando(true);
+      const result = await db.runAsync(
+        'INSERT INTO clientes (nome, telefone, observacoes) VALUES (?, ?, ?);',
+        [nome, novoClienteTelefone || null, null],
+      );
+
+      const novoId = (result.lastInsertRowId as number) ?? undefined;
+      setNovoClienteNome('');
+      setNovoClienteTelefone('');
+      setMostrarNovoCliente(false);
+
+      await carregarClientes();
+      if (novoId) {
+        setClienteSelecionado(novoId);
+      }
+
+      Alert.alert('Sucesso', 'Cliente cadastrado com sucesso.');
+    } catch (error) {
+      console.log('Erro ao salvar cliente rápido', error);
+      Alert.alert('Erro', 'Não foi possível salvar o cliente.');
+    } finally {
+      setSalvando(false);
+    }
+  }, [db, novoClienteNome, novoClienteTelefone, carregarClientes]);
+
+  // ------------------------------
+  // Salvar venda
+  // ------------------------------
+  const handleSalvarVenda = useCallback(async () => {
+    if (!descricao.trim()) {
+      Alert.alert('Atenção', 'Informe a descrição do produto/serviço.');
+      return;
+    }
+    if (!valorNumber) {
+      Alert.alert('Atenção', 'Informe o valor pago pelo cliente.');
+      return;
+    }
+
+    let clienteNome: string | null = null;
+    if (clienteSelecionado) {
+      const cliente = clientes.find(c => c.id === clienteSelecionado);
+      clienteNome = cliente?.nome ?? null;
+    }
 
     try {
+      setSalvando(true);
       await db.runAsync(
-        `
-        INSERT INTO vendas (data, descricao, tipo, valor, custo, lucro, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?);
-      `,
-        dataISO,
-        descricao,
-        tipo,
-        v,
-        c,
-        lucro,
-        'FEITA'
+        `INSERT INTO vendas 
+           (data, descricao, tipo, valor, custo, lucro, status, cliente)
+         VALUES (?, ?, ?, ?, ?, ?, 'feita', ?);`,
+        [data, descricao.trim(), tipo, valorNumber, custoNumber, lucroNumber, clienteNome],
       );
 
       setDescricao('');
       setValor('');
       setCusto('');
+      setClienteSelecionado(null);
       setTipo('LASER');
-      setDataVendaISO(dataHojeISO);
-      setConfirmVisible(false);
 
-      Alert.alert('Sucesso', 'Venda registrada!');
+      Alert.alert('Sucesso', 'Venda registrada com sucesso.');
     } catch (error) {
-      console.error(error);
+      console.log('Erro ao salvar venda', error);
       Alert.alert('Erro', 'Não foi possível salvar a venda.');
+    } finally {
+      setSalvando(false);
     }
-  }
+  }, [
+    db,
+    data,
+    descricao,
+    tipo,
+    valorNumber,
+    custoNumber,
+    lucroNumber,
+    clienteSelecionado,
+    clientes,
+  ]);
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
-        <AppHeader titulo="Registrar Vendas" />
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <AppHeader
+          titulo="Registrar Vendas"
+          logoUri={lojaConfig?.logoUri ?? undefined}
+        />
 
         <View style={styles.card}>
           <View style={styles.cardHeaderLinha}>
             <MaterialCommunityIcons
               name="cart-plus"
               size={20}
-              color="#4e9bff"
+              color={COLORS.primary}
+              style={styles.botaoIcon}
             />
             <Text style={styles.cardTitulo}>Nova venda</Text>
           </View>
 
+          {/* Descrição */}
           <Text style={styles.label}>Descrição do produto/serviço</Text>
           <TextInput
             style={styles.input}
+            placeholder="Ex: Totem MDF 15x20"
+            placeholderTextColor={COLORS.textMuted}
             value={descricao}
             onChangeText={setDescricao}
-            placeholder="Ex: Totem MDF 15x20"
-            placeholderTextColor="#777"
           />
 
-          <Text style={styles.label}>Tipo</Text>
+          {/* Tipo */}
+          <Text style={[styles.label, { marginTop: 12 }]}>Tipo</Text>
           <View style={styles.tipoLinha}>
-            {(['LASER', '3D', 'OUTRO'] as TipoVenda[]).map((t) => (
+            {(['LASER', '3D', 'OUTRO'] as const).map(opcao => (
               <TouchableOpacity
-                key={t}
+                key={opcao}
                 style={[
                   styles.tipoBotao,
-                  tipo === t && styles.tipoBotaoAtivo,
+                  tipo === opcao && styles.tipoBotaoAtivo,
                 ]}
-                onPress={() => setTipo(t)}
+                onPress={() => setTipo(opcao)}
               >
-                <MaterialCommunityIcons
-                  name={tipoIcones[t] as any}
-                  size={16}
-                  color={tipo === t ? '#fff' : '#aaa'}
-                  style={{ marginRight: 6 }}
-                />
                 <Text
                   style={[
-                    styles.tipoTexto,
-                    tipo === t && styles.tipoTextoAtivo,
+                    styles.tipoBotaoTexto,
+                    tipo === opcao && styles.tipoBotaoTextoAtivo,
                   ]}
                 >
-                  {t}
+                  {opcao === 'LASER' && '⚡ LASER'}
+                  {opcao === '3D' && '🧱 3D'}
+                  {opcao === 'OUTRO' && '📦 OUTRO'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text style={styles.label}>Data (DD/MM/AAAA)</Text>
-          <TouchableOpacity
-            style={[styles.input, styles.inputDate]}
-            onPress={() => setShowDatePicker(true)}
-            activeOpacity={0.7}
-          >
-            <MaterialCommunityIcons
-              name="calendar-month-outline"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.inputDateText}>
-              {formatDateToBR(dataVendaISO)}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.label}>Valor pago pelo cliente (R$)</Text>
+          {/* Data */}
+          <Text style={[styles.label, { marginTop: 12 }]}>Data (DD/MM/AAAA)</Text>
           <TextInput
             style={styles.input}
+            value={data}
+            onChangeText={setData}
+          />
+
+          {/* Cliente */}
+          <Text style={[styles.label, { marginTop: 12 }]}>Cliente (opcional)</Text>
+
+          {carregandoClientes ? (
+            <ActivityIndicator color={COLORS.primary} style={{ marginBottom: 8 }} />
+          ) : (
+            <>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 8 }}
+              >
+                {clientes.map(cliente => (
+                  <TouchableOpacity
+                    key={cliente.id}
+                    onPress={() =>
+                      setClienteSelecionado(prev =>
+                        prev === cliente.id ? null : cliente.id,
+                      )
+                    }
+                    style={[
+                      styles.statusFiltroChip,
+                      clienteSelecionado === cliente.id &&
+                        styles.statusFiltroChipAtivo,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusFiltroTexto,
+                        clienteSelecionado === cliente.id &&
+                          styles.statusFiltroTextoAtivo,
+                      ]}
+                    >
+                      {cliente.nome}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.botaoSecundario}
+                onPress={() => setMostrarNovoCliente(prev => !prev)}
+              >
+                <MaterialCommunityIcons
+                  name={mostrarNovoCliente ? 'minus-circle-outline' : 'plus-circle-outline'}
+                  size={18}
+                  color={COLORS.primaryText}
+                  style={styles.botaoIcon}
+                />
+                <Text style={styles.botaoSecundarioTexto}>
+                  {mostrarNovoCliente ? 'Cancelar novo cliente' : 'Cadastrar novo cliente'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {mostrarNovoCliente && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={styles.label}>Nome do cliente</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ex: João da Silva"
+                placeholderTextColor={COLORS.textMuted}
+                value={novoClienteNome}
+                onChangeText={setNovoClienteNome}
+              />
+
+              <Text style={[styles.label, { marginTop: 8 }]}>Telefone (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ex: (99) 99999-9999"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                value={novoClienteTelefone}
+                onChangeText={setNovoClienteTelefone}
+              />
+
+              <TouchableOpacity
+                style={styles.botaoPrimario}
+                onPress={handleSalvarNovoCliente}
+                disabled={salvando}
+              >
+                {salvando ? (
+                  <ActivityIndicator color={COLORS.primaryText} />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons
+                      name="account-plus"
+                      size={18}
+                      color={COLORS.primaryText}
+                      style={styles.botaoIcon}
+                    />
+                    <Text style={styles.botaoPrimarioTexto}>Salvar cliente</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Valores */}
+          <Text style={[styles.label, { marginTop: 16 }]}>
+            Valor pago pelo cliente (R$)
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ex: 80"
+            placeholderTextColor={COLORS.textMuted}
             keyboardType="numeric"
             value={valor}
             onChangeText={setValor}
-            placeholder="Ex: 80"
-            placeholderTextColor="#777"
           />
 
-          <Text style={styles.label}>Custo de produção (R$)</Text>
+          <Text style={[styles.label, { marginTop: 12 }]}>
+            Custo de produção (R$)
+          </Text>
           <TextInput
             style={styles.input}
+            placeholder="Ex: 30"
+            placeholderTextColor={COLORS.textMuted}
             keyboardType="numeric"
             value={custo}
             onChangeText={setCusto}
-            placeholder="Ex: 30"
-            placeholderTextColor="#777"
           />
 
-          <TouchableOpacity style={styles.botao} onPress={abrirConfirmacaoVenda}>
-            <MaterialCommunityIcons
-              name="check-circle-outline"
-              size={20}
-              color="#fff"
-              style={styles.botaoIcon}
-            />
-            <Text style={styles.botaoTexto}>Salvar venda</Text>
+          {/* Resumo rápido */}
+          <Text style={[styles.resumoLinha, { marginTop: 12 }]}>
+            Lucro estimado:{' '}
+            <Text style={styles.resumoValor}>R$ {lucroNumber.toFixed(2)}</Text>
+          </Text>
+
+          {/* Botão salvar */}
+          <TouchableOpacity
+            style={[styles.botaoPrimario, { marginTop: 18 }]}
+            onPress={handleSalvarVenda}
+            disabled={salvando}
+          >
+            {salvando ? (
+              <ActivityIndicator color={COLORS.primaryText} />
+            ) : (
+              <>
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={20}
+                  color={COLORS.primaryText}
+                  style={styles.botaoIcon}
+                />
+                <Text style={styles.botaoPrimarioTexto}>Salvar venda</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {showDatePicker && (
-        <DateTimePicker
-          value={new Date(dataVendaISO)}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-          onChange={handleDateChange}
-        />
-      )}
-
-      <Modal
-        visible={confirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Confirmar venda?</Text>
-            <Text style={styles.modalTexto}>
-              Descrição: {descricao || '-'}
-            </Text>
-            <Text style={styles.modalTexto}>Tipo: {tipo}</Text>
-            <Text style={styles.modalTexto}>
-              Data: {formatDateToBR(dataVendaISO)}
-            </Text>
-            <Text style={styles.modalTexto}>
-              Valor: R$ {previewValor.toFixed(2)} | Custo: R${' '}
-              {previewCusto.toFixed(2)}
-            </Text>
-            <Text style={styles.modalTexto}>
-              Lucro estimado: R$ {previewLucro.toFixed(2)}
-            </Text>
-
-            <View style={styles.modalBotoesLinha}>
-              <TouchableOpacity
-                style={[styles.modalBotao, styles.modalBotaoCancelar]}
-                onPress={() => setConfirmVisible(false)}
-              >
-                <MaterialCommunityIcons
-                  name="close-circle-outline"
-                  size={20}
-                  color="#fff"
-                  style={styles.botaoIcon}
-                />
-                <Text style={styles.botaoTexto}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBotao, styles.modalBotaoConfirmar]}
-                onPress={confirmarVenda}
-              >
-                <MaterialCommunityIcons
-                  name="check-circle"
-                  size={20}
-                  color="#fff"
-                  style={styles.botaoIcon}
-                />
-                <Text style={styles.botaoTexto}>Confirmar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 };

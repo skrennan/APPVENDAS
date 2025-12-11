@@ -30,77 +30,80 @@ const SHADOW_CARD =
         shadowOffset: { width: 0, height: 4 },
       };
 
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   // -------------------------------------------
   // BASE
   // -------------------------------------------
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingTop: 20
+    paddingTop: Platform.OS === 'ios' ? 16 : 24,
   },
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 20,
     paddingBottom: 24,
   },
 
- // HEADER / LOGO
-headerTop: {
-  alignItems: 'center',
-  marginBottom: 8,
-  paddingTop: Platform.OS === 'android' ? 16 : 24,
-},
-headerLogoWrapper: {
-  width: 160,
-  height: 160,
-  borderRadius: 24,
-  backgroundColor: '#020617',
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: COLORS.borderSoft,
-  ...SHADOW_CARD,
-},
-headerLogo: {
-  width: '100%',
-  height: '100%',
-  resizeMode: 'cover',
-},
-headerLogoLarge: {   // alias pra não quebrar nada antigo
-  width: '100%',
-  height: '100%',
-  resizeMode: 'cover',
-},
-headerLogoPlaceholder: {
-  flex: 1,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-headerLogoPlaceholderText: {
-  color: COLORS.textMuted,
-  fontSize: 16,
-  fontWeight: '600',
-},
-headerTitle: {
-  marginTop: 16,
-  fontSize: 26,
-  fontWeight: '800',
-  color: COLORS.text,
-  textAlign: 'center',
-},
-headerSubtitle: {
-  marginTop: 2,
-  fontSize: 13,
-  color: COLORS.textMuted,
-  textAlign: 'center',
-},
-headerScreenTitle: { // alias antigo, se alguma tela ainda usar
-  marginTop: 16,
-  fontSize: 26,
-  fontWeight: '800',
-  color: COLORS.text,
-  textAlign: 'center',
-},
+  // -------------------------------------------
+  // HEADER / LOGO (AppHeader)
+  // -------------------------------------------
+  headerTop: {
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingTop: Platform.OS === 'android' ? 16 : 24,
+  },
+  headerLogoWrapper: {
+    width: 160,
+    height: 160,
+    borderRadius: 24,
+    backgroundColor: '#020617',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    ...SHADOW_CARD,
+  },
+  // alias para versões antigas
+  headerLogoLarge: {
+    width: 160,
+    height: 160,
+    borderRadius: 24,
+    backgroundColor: '#020617',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    ...SHADOW_CARD,
+  },
+  headerLogo: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  headerLogoPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLogoPlaceholderText: {
+    color: COLORS.textMuted,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  headerScreenTitle: {
+    marginTop: 16,
+    fontSize: 26,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  // alias para algum código antigo
+  headerTitle: {
+    marginTop: 16,
+    fontSize: 26,
+    fontWeight: '800',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
 
   // -------------------------------------------
   // CARDS / TEXTOS / INPUTS
@@ -125,14 +128,6 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     fontWeight: '700',
     color: COLORS.text,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 12,
-  },
-
-  // textos em cards (NOVOS)
   cardText: {
     fontSize: 14,
     color: COLORS.text,
@@ -140,8 +135,14 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
   cardSubtitle: {
     fontSize: 13,
     color: COLORS.textMuted,
+    marginTop: 2,
   },
-
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 12,
+  },
   label: {
     fontSize: 14,
     color: COLORS.text,
@@ -175,7 +176,7 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     fontSize: 14,
   },
 
-  // lista vazia / texto vazio (NOVO alias)
+  // lista vazia
   listaVaziaTexto: {
     marginTop: 4,
     fontSize: 13,
@@ -187,67 +188,6 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     color: COLORS.textMuted,
     textAlign: 'center',
   },
-    // -------------------------------------------
-  // METAS – COMPATIBILIDADE COM VERSÃO ANTIGA
-  // -------------------------------------------
-
-  // container geral que você usava como "cardRes"
-  cardRes: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.cardSoft,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOW_CARD,
-  },
-
-  // linha onde fica a barra de progresso (se tiver)
-  barraProgressoLinha: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-
-  // se em algum lugar você usava "barraProgresso",
-  // deixamos como alias pra barra de progresso nova
-  barraProgresso: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#020617',
-    overflow: 'hidden',
-  },
-
-  // texto pequeno embaixo da barra (porcentagem/meta)
-  barraProgressoTexto: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-    // -------------------------------------------
-  // METAS – BARRA DE PROGRESSO (compat com código antigo)
-  // -------------------------------------------
-  barraContainer: {
-    marginTop: 8,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#020617',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  barraPreenchida: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: COLORS.primary,
-  },
-  barraLegenda: {
-    marginTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-
-
 
   // -------------------------------------------
   // TIPO (LASER / 3D / OUTRO / CATEGORIAS COMPRAS)
@@ -364,15 +304,12 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     fontSize: 14,
     fontWeight: '600',
   },
-
-  // texto de botão secundário (NOVO alias usado em alguns lugares)
   buttonSecondaryText: {
     color: COLORS.text,
     fontSize: 14,
     fontWeight: '600',
   },
-
-  // usados no ComprasScreen (Salvar compra)
+  // usados em ComprasScreen
   botao: {
     marginTop: 16,
     flexDirection: 'row',
@@ -415,7 +352,7 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
   },
 
   // -------------------------------------------
-  // MODAL (geral)
+  // MODAL
   // -------------------------------------------
   modalOverlay: {
     flex: 1,
@@ -461,11 +398,11 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+    marginLeft: 8,
   },
   modalButtonCancel: {
     borderColor: COLORS.border,
     backgroundColor: COLORS.cardSoft,
-    marginRight: 8,
   },
   modalButtonConfirm: {
     borderColor: COLORS.primarySoft,
@@ -479,8 +416,7 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
   modalButtonTextCancel: {
     color: COLORS.text,
   },
-
-  // aliases antigos / compat
+  // aliases antigos
   modalTexto: {
     fontSize: 14,
     color: COLORS.textMuted,
@@ -509,24 +445,33 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     borderColor: COLORS.primarySoft,
     backgroundColor: COLORS.primary,
   },
+  modalInput: {
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#e5e7eb',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+    fontSize: 14,
+  },
 
   // -------------------------------------------
   // TAB BAR
   // -------------------------------------------
+  // ...
   tabBar: {
     backgroundColor: COLORS.tabBar,
     borderTopWidth: 1,
     borderTopColor: COLORS.tabBarBorder,
-    paddingBottom: Platform.OS === 'android' ? 6 : 12,
     paddingTop: 4,
-    height: Platform.OS === 'android' ? 64 : 80,
   },
   tabBarIconWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabBarLabel: {
-    fontSize: 11,
+   fontSize: 11,
     marginTop: 2,
     color: COLORS.textMuted,
   },
@@ -536,7 +481,7 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
   },
 
   // -------------------------------------------
-  // FILTROS / CHIPS (Status, Relatórios, Compras)
+  // FILTROS / CHIPS
   // -------------------------------------------
   filtroLinha: {
     flexDirection: 'row',
@@ -666,26 +611,49 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     color: COLORS.primaryText,
   },
 
+  // BADGES de status
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
     marginLeft: 8,
+    backgroundColor: 'transparent',
+    borderColor: COLORS.border,
   },
   statusBadgeFeita: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 8,
     borderColor: COLORS.warning,
     backgroundColor: 'rgba(250,204,21,0.06)',
   },
   statusBadgePronta: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 8,
     borderColor: COLORS.primary,
     backgroundColor: 'rgba(59,130,246,0.10)',
   },
   statusBadgePaga: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 8,
     borderColor: COLORS.success,
     backgroundColor: 'rgba(34,197,94,0.08)',
   },
   statusBadgeEntregue: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 8,
     borderColor: COLORS.textMuted,
     backgroundColor: 'rgba(148,163,184,0.10)',
   },
@@ -727,51 +695,57 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
   },
 
   // -------------------------------------------
-  // METAS
-  // -------------------------------------------
-  metaCard: {
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: COLORS.cardSoft,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  metaHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  metaTitulo: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  metaDescricao: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    marginBottom: 8,
-  },
-  metaProgressoBarraFundo: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#020617',
-    overflow: 'hidden',
-  },
-  metaProgressoBarraPreenchida: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: COLORS.primary,
-  },
-  metaProgressoTexto: {
-    marginTop: 4,
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
+// METAS
+// -------------------------------------------
+metaCard: {
+  marginTop: 10,
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: COLORS.cardSoft,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+metaHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 6,
+},
+metaTitulo: {
+  fontSize: 15,
+  fontWeight: '700',
+  color: COLORS.text,
+},
+metaDescricao: {
+  fontSize: 13,
+  color: COLORS.textMuted,
+  marginBottom: 8,
+},
+
+// ⬇️ FUNDO da barra de progresso
+metaProgressoBarraFundo: {
+  height: 8,
+  borderRadius: 999,
+  backgroundColor: '#020617',
+  overflow: 'hidden',
+},
+
+// ⬇️ PARTE preenchida da barra
+metaProgressoBarraPreenchida: {
+  height: '100%',
+  borderRadius: 999,
+  backgroundColor: COLORS.primary,
+},
+
+metaProgressoTexto: {
+  marginTop: 4,
+  fontSize: 12,
+  color: COLORS.textMuted,
+},
+
 
   // -------------------------------------------
-  // COMPRAS (ComprasScreen)
+  // COMPRAS
   // -------------------------------------------
   comprasSectionTitle: {
     fontSize: 18,
@@ -814,7 +788,6 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     fontSize: 12,
     color: COLORS.textMuted,
   },
-
   orcItemRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -843,73 +816,52 @@ headerScreenTitle: { // alias antigo, se alguma tela ainda usar
     marginRight: 8,
   },
 
-
-// --- CLIENTES ---
-
-clienteActionsRow: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  gap: 10,
-  marginTop: 12,
-},
-
-modalInput: {
-  backgroundColor: COLORS.cardSoft,
-  borderRadius: 14,
-  paddingHorizontal: 14,
-  paddingVertical: 10,
-  color: COLORS.text,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  fontSize: 14,
-},
-
-clienteRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  paddingHorizontal: 14,
-  paddingVertical: 12,
-  borderRadius: 16,
-  backgroundColor: COLORS.card,
-  borderWidth: 1,
-  borderColor: COLORS.borderSoft,
-  marginBottom: 10,
-},
-
-clienteInfo: {
-  flex: 1,
-  marginLeft: 10,
-},
-
-clienteNome: {
-  color: COLORS.text,
-  fontSize: 14,
-  fontWeight: '600',
-},
-
-clienteTelefone: {
-  color: COLORS.textMuted,
-  fontSize: 12,
-  marginTop: 2,
-},
-
-clienteObservacoes: {
-  color: COLORS.textMuted,
-  fontSize: 12,
-  marginTop: 2,
-},
-
-clienteIconWrapper: {
-  width: 40,
-  height: 40,
-  borderRadius: 999,
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: COLORS.cardSoft,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-},
+  // -------------------------------------------
+  // CLIENTES
+  // -------------------------------------------
+  clienteActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 10,
+  },
+  clienteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#020617',
+    borderRadius: 14,
+    marginBottom: 8,
+  },
+  clienteNome: {
+    color: '#e5e7eb',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  clienteTelefone: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 2,
+  },
+    clienteIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: '#020617',
+    borderWidth: 1,
+    borderColor: '#1f2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  clienteInfo: {
+    flex: 1,
+  },
+  clienteObservacoes: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginTop: 4,
+  },
 
 });
-
-export default styles;

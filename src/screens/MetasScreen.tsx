@@ -5,7 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 
 import AppHeader from '../components/AppHeader';       // 👈 sem chaves
 import FadeInView from '../components/FadeInView';     // 👈 sem chaves
-import  styles  from '../styles';
+import  {styles}  from '../styles';
 
 type Totais = {
   totalVendas: number;

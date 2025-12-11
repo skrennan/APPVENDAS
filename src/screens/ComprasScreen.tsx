@@ -1,441 +1,281 @@
-// src/screens/ComprasScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   View,
   Text,
+  ScrollView,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
-import { useSQLiteContext } from 'expo-sqlite';
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import  styles  from '../styles';
-import  AppHeader  from '../components/AppHeader';
-import { formatDateToBR } from '../utils';
+import { DbContext } from '../../App';
+import AppHeader from '../components/AppHeader';
+import { styles, COLORS } from '../styles';
 
-type CategoriaCompra = 'INSUMO' | 'FRETE' | 'FIXO' | 'OUTRO';
-
-type CompraRow = {
+type Compra = {
   id: number;
   data: string;
   descricao: string;
-  categoria: CategoriaCompra;
-  fornecedor: string | null;
+  categoria: string;
+  fornecedor?: string | null;
   valor: number;
-  observacoes: string | null;
-};
-
-const categoriaLabels: Record<CategoriaCompra, string> = {
-  INSUMO: 'Insumos / materiais',
-  FRETE: 'Frete',
-  FIXO: 'Despesas fixas',
-  OUTRO: 'Outros',
+  observacoes?: string | null;
 };
 
 const ComprasScreen: React.FC = () => {
-  const db = useSQLiteContext();
+  const { db, lojaConfig } = useContext(DbContext)!;
 
-  const hoje = new Date();
-  const dataHojeISO = hoje.toISOString().slice(0, 10);
-
-  const ano = hoje.getFullYear();
-  const mes = hoje.getMonth();
-  const primeiroDia = new Date(ano, mes, 1);
-  const ultimoDia = new Date(ano, mes + 1, 0);
-
-  const [dataCompraISO, setDataCompraISO] = useState(dataHojeISO);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
+  const [data, setData] = useState(() => {
+    const hoje = new Date();
+    const d = String(hoje.getDate()).padStart(2, '0');
+    const m = String(hoje.getMonth() + 1).padStart(2, '0');
+    const a = hoje.getFullYear();
+    return `${d}/${m}/${a}`;
+  });
   const [descricao, setDescricao] = useState('');
-  const [categoria, setCategoria] = useState<CategoriaCompra>('INSUMO');
+  const [categoria, setCategoria] = useState<'INSUMOS' | 'FRETE' | 'OUTROS'>(
+    'INSUMOS',
+  );
   const [fornecedor, setFornecedor] = useState('');
   const [valor, setValor] = useState('');
   const [observacoes, setObservacoes] = useState('');
 
-  const [dataInicioISO, setDataInicioISO] = useState(
-    primeiroDia.toISOString().slice(0, 10)
+  const [compras, setCompras] = useState<Compra[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const valorNumber = useMemo(
+    () => Number(String(valor).replace(',', '.')) || 0,
+    [valor],
   );
-  const [dataFimISO, setDataFimISO] = useState(
-    ultimoDia.toISOString().slice(0, 10)
-  );
-  const [showInicioPicker, setShowInicioPicker] = useState(false);
-  const [showFimPicker, setShowFimPicker] = useState(false);
 
-  const [compras, setCompras] = useState<CompraRow[]>([]);
-  const [totalCompras, setTotalCompras] = useState(0);
-
-  function onChangeDataCompra(event: DateTimePickerEvent, date?: Date) {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (date) {
-      setDataCompraISO(date.toISOString().slice(0, 10));
-    }
-  }
-
-  function onChangeDataInicio(event: DateTimePickerEvent, date?: Date) {
-    if (Platform.OS === 'android') setShowInicioPicker(false);
-    if (date) {
-      setDataInicioISO(date.toISOString().slice(0, 10));
-    }
-  }
-
-  function onChangeDataFim(event: DateTimePickerEvent, date?: Date) {
-    if (Platform.OS === 'android') setShowFimPicker(false);
-    if (date) {
-      setDataFimISO(date.toISOString().slice(0, 10));
-    }
-  }
-
-  useEffect(() => {
-    carregarCompras();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function carregarCompras() {
-    if (dataFimISO < dataInicioISO) {
-      Alert.alert(
-        'Atenção',
-        'A data final não pode ser menor que a data inicial.'
-      );
-      return;
-    }
-
+  const carregarCompras = useCallback(async () => {
     try {
-      const lista = await db.getAllAsync<CompraRow>(
-        `
-          SELECT id, data, descricao, categoria, fornecedor, valor, observacoes
-          FROM compras
-          WHERE data BETWEEN ? AND ?
-          ORDER BY data DESC, id DESC;
-        `,
-        dataInicioISO,
-        dataFimISO
+      setCarregando(true);
+      const rows = await db.getAllAsync<Compra>(
+        'SELECT * FROM compras ORDER BY id DESC;',
       );
-
-      const array = Array.isArray(lista) ? lista.filter(Boolean) : [];
-      setCompras(array);
-
-      const total = array.reduce((acc, c) => acc + (c.valor || 0), 0);
-      setTotalCompras(total);
+      setCompras(rows);
     } catch (error) {
-      console.error(error);
-      Alert.alert('Erro', 'Não foi possível carregar as compras.');
+      console.log('Erro ao carregar compras', error);
+    } finally {
+      setCarregando(false);
     }
-  }
+  }, [db]);
 
-  async function salvarCompra() {
-    const v = parseFloat(valor.replace(',', '.')) || 0;
+  useFocusEffect(
+    useCallback(() => {
+      carregarCompras();
+    }, [carregarCompras]),
+  );
 
-    if (!descricao || v <= 0) {
+  const handleSalvar = useCallback(async () => {
+    if (!descricao.trim() || !valorNumber) {
       Alert.alert(
         'Atenção',
-        'Preencha pelo menos descrição e valor maior que zero.'
+        'Informe ao menos a descrição e o valor da compra.',
       );
       return;
     }
 
     try {
+      setSalvando(true);
       await db.runAsync(
-        `
-          INSERT INTO compras (data, descricao, categoria, fornecedor, valor, observacoes)
-          VALUES (?, ?, ?, ?, ?, ?);
-        `,
-        dataCompraISO,
-        descricao,
-        categoria,
-        fornecedor || null,
-        v,
-        observacoes || null
+        `INSERT INTO compras 
+         (data, descricao, categoria, fornecedor, valor, observacoes)
+         VALUES (?, ?, ?, ?, ?, ?);`,
+        [
+          data,
+          descricao.trim(),
+          categoria,
+          fornecedor.trim() || null,
+          valorNumber,
+          observacoes.trim() || null,
+        ],
       );
 
       setDescricao('');
-      setCategoria('INSUMO');
       setFornecedor('');
       setValor('');
       setObservacoes('');
-      setDataCompraISO(dataHojeISO);
 
-      Alert.alert('Sucesso', 'Compra registrada!');
       await carregarCompras();
+      Alert.alert('Sucesso', 'Compra registrada com sucesso.');
     } catch (error) {
-      console.error(error);
+      console.log('Erro ao salvar compra', error);
       Alert.alert('Erro', 'Não foi possível salvar a compra.');
+    } finally {
+      setSalvando(false);
     }
-  }
+  }, [
+    db,
+    data,
+    descricao,
+    categoria,
+    fornecedor,
+    valorNumber,
+    observacoes,
+    carregarCompras,
+  ]);
 
-  async function excluirCompra(id: number) {
-    Alert.alert('Confirmar', 'Deseja realmente excluir esta compra?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await db.runAsync('DELETE FROM compras WHERE id = ?;', id);
-            await carregarCompras();
-          } catch (error) {
-            console.error(error);
-            Alert.alert('Erro', 'Não foi possível excluir a compra.');
-          }
-        },
-      },
-    ]);
-  }
+  const totalCompras = compras.reduce((acc, c) => acc + (c.valor || 0), 0);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
-        <AppHeader  titulo  =  "Compras e Despesas" />
+    <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
+      <AppHeader
+        titulo="Compras"
+        logoUri={lojaConfig?.logoUri ?? undefined}
+      />
 
-        {/* NOVA COMPRA */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderLinha}>
-            <MaterialCommunityIcons
-              name="cart-arrow-down"
-              size={20}
-              color="#4e9bff"
-            />
-            <Text style={styles.cardTitulo}>Registrar compra</Text>
-          </View>
-
-          <Text style={styles.label}>Descrição</Text>
-          <TextInput
-            style={styles.input}
-            value={descricao}
-            onChangeText={setDescricao}
-            placeholder="Ex: 1kg de resina, MDF, etc."
-            placeholderTextColor="#777"
+      <View style={styles.card}>
+        <View style={styles.cardHeaderLinha}>
+          <MaterialCommunityIcons
+            name="cash-minus"
+            size={20}
+            color={COLORS.primary}
+            style={styles.botaoIcon}
           />
-
-          <Text style={styles.label}>Categoria</Text>
-          <View style={styles.tipoLinha}>
-            {(['INSUMO', 'FRETE', 'FIXO', 'OUTRO'] as CategoriaCompra[]).map(
-              (cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.tipoBotao,
-                    categoria === cat && styles.tipoBotaoAtivo,
-                  ]}
-                  onPress={() => setCategoria(cat)}
-                >
-                  <Text
-                    style={[
-                      styles.tipoTexto,
-                      categoria === cat && styles.tipoTextoAtivo,
-                    ]}
-                  >
-                    {categoriaLabels[cat]}
-                  </Text>
-                </TouchableOpacity>
-              )
-            )}
-          </View>
-
-          <Text style={styles.label}>Data da compra</Text>
-          <TouchableOpacity
-            style={[styles.input, styles.inputDate]}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <MaterialCommunityIcons
-              name="calendar-month-outline"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.inputDateText}>
-              {formatDateToBR(dataCompraISO)}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.label}>Fornecedor (opcional)</Text>
-          <TextInput
-            style={styles.input}
-            value={fornecedor}
-            onChangeText={setFornecedor}
-            placeholder="Ex: Fornecedor XYZ"
-            placeholderTextColor="#777"
-          />
-
-          <Text style={styles.label}>Valor da compra (R$)</Text>
-          <TextInput
-            style={styles.input}
-            value={valor}
-            onChangeText={setValor}
-            keyboardType="numeric"
-            placeholder="Ex: 150"
-            placeholderTextColor="#777"
-          />
-
-          <Text style={styles.label}>Observações (opcional)</Text>
-          <TextInput
-            style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
-            value={observacoes}
-            onChangeText={setObservacoes}
-            multiline
-            placeholder="Ex: Lote de promoção, frete incluso, etc."
-            placeholderTextColor="#777"
-          />
-
-          <TouchableOpacity style={styles.botao} onPress={salvarCompra}>
-            <MaterialCommunityIcons
-              name="content-save-outline"
-              size={20}
-              color="#fff"
-              style={styles.botaoIcon}
-            />
-            <Text style={styles.botaoTexto}>Salvar compra</Text>
-          </TouchableOpacity>
+          <Text style={styles.cardTitulo}>Registrar compra</Text>
         </View>
 
-        {/* FILTRO E RESUMO */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderLinha}>
-            <MaterialCommunityIcons
-              name="calendar-range"
-              size={20}
-              color="#4e9bff"
-            />
-            <Text style={styles.cardTitulo}>Período de análise</Text>
-          </View>
+        <Text style={styles.label}>Descrição</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ex: MDF 3mm"
+          placeholderTextColor={COLORS.textMuted}
+          value={descricao}
+          onChangeText={setDescricao}
+        />
 
-          <Text style={styles.label}>Data inicial</Text>
-          <TouchableOpacity
-            style={[styles.input, styles.inputDate]}
-            onPress={() => setShowInicioPicker(true)}
-          >
-            <MaterialCommunityIcons
-              name="calendar-start"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.inputDateText}>
-              {formatDateToBR(dataInicioISO)}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.label}>Data final</Text>
-          <TouchableOpacity
-            style={[styles.input, styles.inputDate]}
-            onPress={() => setShowFimPicker(true)}
-          >
-            <MaterialCommunityIcons
-              name="calendar-end"
-              size={18}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.inputDateText}>
-              {formatDateToBR(dataFimISO)}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.botaoSecundario}
-            onPress={carregarCompras}
-          >
-            <MaterialCommunityIcons
-              name="refresh"
-              size={20}
-              color="#4e9bff"
-              style={styles.botaoIcon}
-            />
-            <Text style={styles.botaoSecundarioTexto}>
-              Atualizar lista
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[styles.label, { marginTop: 12 }]}>
-            Total de compras/despesas no período: R$ {totalCompras.toFixed(2)}
-          </Text>
+        <Text style={[styles.label, { marginTop: 12 }]}>Categoria</Text>
+        <View style={styles.tipoLinha}>
+          {(['INSUMOS', 'FRETE', 'OUTROS'] as const).map(cat => (
+            <TouchableOpacity
+              key={cat}
+              style={[
+                styles.tipoBotao,
+                categoria === cat && styles.tipoBotaoAtivo,
+              ]}
+              onPress={() => setCategoria(cat)}
+            >
+              <Text
+                style={[
+                  styles.tipoBotaoTexto,
+                  categoria === cat && styles.tipoBotaoTextoAtivo,
+                ]}
+              >
+                {cat === 'INSUMOS' && 'Insumos'}
+                {cat === 'FRETE' && 'Frete'}
+                {cat === 'OUTROS' && 'Outros'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* LISTA DE COMPRAS */}
-        <View style={styles.card}>
-          <View style={styles.cardHeaderLinha}>
-            <MaterialCommunityIcons
-              name="format-list-bulleted"
-              size={20}
-              color="#4e9bff"
-            />
-            <Text style={styles.cardTitulo}>Compras no período</Text>
-          </View>
+        <Text style={[styles.label, { marginTop: 12 }]}>Data</Text>
+        <TextInput style={styles.input} value={data} onChangeText={setData} />
 
-          {(!Array.isArray(compras) || compras.length === 0) && (
-            <Text style={styles.label}>
-              Nenhuma compra encontrada nesse período.
-            </Text>
+        <Text style={[styles.label, { marginTop: 12 }]}>Fornecedor</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Opcional"
+          placeholderTextColor={COLORS.textMuted}
+          value={fornecedor}
+          onChangeText={setFornecedor}
+        />
+
+        <Text style={[styles.label, { marginTop: 12 }]}>Valor (R$)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ex: 50"
+          placeholderTextColor={COLORS.textMuted}
+          keyboardType="numeric"
+          value={valor}
+          onChangeText={setValor}
+        />
+
+        <Text style={[styles.label, { marginTop: 12 }]}>Observações</Text>
+        <TextInput
+          style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+          multiline
+          value={observacoes}
+          onChangeText={setObservacoes}
+        />
+
+        <TouchableOpacity
+          style={[styles.botaoPrimario, { marginTop: 18 }]}
+          onPress={handleSalvar}
+          disabled={salvando}
+        >
+          {salvando ? (
+            <ActivityIndicator color={COLORS.primaryText} />
+          ) : (
+            <>
+              <MaterialCommunityIcons
+                name="content-save-outline"
+                size={20}
+                color={COLORS.primaryText}
+                style={styles.botaoIcon}
+              />
+              <Text style={styles.botaoPrimarioTexto}>Salvar compra</Text>
+            </>
           )}
+        </TouchableOpacity>
+      </View>
 
-          {Array.isArray(compras) &&
-            compras.filter(Boolean).map((c) => (
-              <View key={c.id} style={styles.orcItemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.orcItemText}>{c.descricao}</Text>
-                  <Text style={styles.orcItemSubText}>
-                    {formatDateToBR(c.data)} • {categoriaLabels[c.categoria]} •
-                    Valor: R$ {c.valor.toFixed(2)}
-                    {c.fornecedor ? ` • Forn.: ${c.fornecedor}` : ''}
-                  </Text>
-                  {c.observacoes ? (
-                    <Text style={styles.orcItemSubText}>
-                      Obs: {c.observacoes}
-                    </Text>
-                  ) : null}
-                </View>
-
-                <TouchableOpacity onPress={() => excluirCompra(c.id)}>
-                  <MaterialCommunityIcons
-                    name="delete-outline"
-                    size={20}
-                    color="#ff6666"
-                  />
-                </TouchableOpacity>
-              </View>
-            ))}
+      <View style={[styles.card, { marginTop: 12 }]}>
+        <View style={styles.cardHeaderLinha}>
+          <MaterialCommunityIcons
+            name="clipboard-list"
+            size={20}
+            color={COLORS.primary}
+            style={styles.botaoIcon}
+          />
+          <Text style={styles.cardTitulo}>Compras recentes</Text>
         </View>
-      </ScrollView>
 
-      {showDatePicker && (
-        <DateTimePicker
-          value={new Date(dataCompraISO)}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-          onChange={onChangeDataCompra}
-        />
-      )}
+        {carregando && compras.length === 0 && (
+          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 8 }} />
+        )}
 
-      {showInicioPicker && (
-        <DateTimePicker
-          value={new Date(dataInicioISO)}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-          onChange={onChangeDataInicio}
-        />
-      )}
+        {compras.length === 0 && !carregando && (
+          <Text style={styles.listaVaziaTexto}>
+            Nenhuma compra registrada até o momento.
+          </Text>
+        )}
 
-      {showFimPicker && (
-        <DateTimePicker
-          value={new Date(dataFimISO)}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
-          onChange={onChangeDataFim}
-        />
-      )}
-    </KeyboardAvoidingView>
+        {compras.map(compra => (
+          <View key={compra.id} style={styles.compraItem}>
+            <View style={styles.compraLinhaSuperior}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.compraFornecedor}>
+                  {compra.fornecedor || 'Fornecedor não informado'}
+                </Text>
+                <Text style={styles.compraDescricao}>{compra.descricao}</Text>
+              </View>
+              <Text style={styles.comprasResumoValor}>
+                R$ {compra.valor.toFixed(2)}
+              </Text>
+            </View>
+            <Text style={styles.compraDataValor}>
+              {compra.data} • {compra.categoria}
+            </Text>
+          </View>
+        ))}
+
+        {compras.length > 0 && (
+          <View style={{ marginTop: 8 }}>
+            <Text style={styles.resumoLabel}>Total em compras</Text>
+            <Text style={styles.resumoValorLinha}>
+              R$ {totalCompras.toFixed(2)}
+            </Text>
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
 };
 

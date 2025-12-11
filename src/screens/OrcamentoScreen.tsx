@@ -1,5 +1,5 @@
 // src/screens/OrcamentoScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,10 +17,11 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import  styles  from '../styles';
+import  {styles}  from '../styles';
 import  AppHeader  from '../components/AppHeader';
 import FadeInView from '../components/FadeInView';
 import { LojaConfig, formatDateToBR } from '../utils';
+import { DbContext } from '../../App';
 
 type ItemOrcamento = {
   id: number;
@@ -30,7 +31,7 @@ type ItemOrcamento = {
 };
 
 const OrcamentoScreen: React.FC = () => {
-  const db = useSQLiteContext();
+  const { db, lojaConfig } = useContext(DbContext)!;
 
   const [clienteNome, setClienteNome] = useState('');
   const [clienteContato, setClienteContato] = useState('');
@@ -277,7 +278,10 @@ const OrcamentoScreen: React.FC = () => {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <AppHeader titulo="Orçamentos" />
+        <AppHeader
+          titulo="Orçamentos"
+          logoUri={lojaConfig?.logoUri ?? undefined}
+        />
 
         {/* DADOS DO CLIENTE */}
         <View style={styles.card}>
@@ -304,7 +308,7 @@ const OrcamentoScreen: React.FC = () => {
             style={styles.input}
             value={clienteContato}
             onChangeText={setClienteContato}
-            placeholder="Ex: (99) 98429-0321"
+            placeholder="Ex: (99) 99999-9999"
             placeholderTextColor="#777"
           />
 
