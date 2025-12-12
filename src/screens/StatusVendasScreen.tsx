@@ -1,22 +1,29 @@
-import React, { useCallback, useContext, useState } from 'react';
+import React, {
+  useState,
+  useContext,
+  useCallback,
+} from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
-  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { DbContext } from '../../App';
-import AppHeader from '../components/AppHeader';
 import { styles, COLORS } from '../styles';
+import AppHeader from '../components/AppHeader';
+import SwipeTabsContainer from '../components/SwipeTabsContainer';
 
+type TipoVenda = 'LASER' | '3D' | 'OUTRO';
 type StatusVenda = 'feita' | 'pronta' | 'paga' | 'entregue';
 
-type Venda = {
+interface Venda {
   id: number;
   data: string;
   descricao: string;
@@ -26,276 +33,462 @@ type Venda = {
   lucro: number;
   status: StatusVenda;
   cliente?: string | null;
-};
+}
 
-const statusLabel = (s: StatusVenda) => {
-  switch (s) {
-    case 'feita':
-      return 'Feita';
-    case 'pronta':
-      return 'Pronta';
-    case 'paga':
-      return 'Paga';
-    case 'entregue':
-      return 'Entregue';
-  }
-};
+interface Cliente {
+  id: number;
+  nome: string;
+  telefone?: string | null;
+  observacoes?: string | null;
+}
 
-const StatusVendasScreen: React.FC = () => {
+const VendasScreen: React.FC = () => {
   const { db, lojaConfig } = useContext(DbContext)!;
 
-  const [vendas, setVendas] = useState<Venda[]>([]);
-  const [carregando, setCarregando] = useState(false);
-  const [statusFiltro, setStatusFiltro] = useState<StatusVenda | 'todas'>('todas');
+  // campos da venda
+  const [descricao, setDescricao] = useState('');
+  const [tipo, setTipo] = useState<TipoVenda>('LASER');
+  const [data, setData] = useState('');
+  const [valor, setValor] = useState('');
+  const [custo, setCusto] = useState('');
 
-  const carregarVendas = useCallback(async () => {
+  // clientes
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clienteSelecionadoNome, setClienteSelecionadoNome] = useState<string>('');
+
+  // "mini-form" de novo cliente na própria tela
+  const [mostrarNovoClienteInline, setMostrarNovoClienteInline] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoTelefone, setNovoTelefone] = useState('');
+  const [novoObs, setNovoObs] = useState('');
+
+  const [salvandoVenda, setSalvandoVenda] = useState(false);
+  const [salvandoCliente, setSalvandoCliente] = useState(false);
+
+  // --------------------------------------------------
+  // Carregar clientes
+  // --------------------------------------------------
+  const carregarClientes = useCallback(async () => {
+    if (!db) return;
     try {
-      setCarregando(true);
-
-      let query = 'SELECT * FROM vendas ORDER BY id DESC;';
-      let params: any[] = [];
-
-      if (statusFiltro !== 'todas') {
-        query = 'SELECT * FROM vendas WHERE status = ? ORDER BY id DESC;';
-        params = [statusFiltro];
-      }
-
-      const rows = await db.getAllAsync<Venda>(query, params);
-      setVendas(rows);
+      const rows = await db.getAllAsync<Cliente>(
+        'SELECT id, nome, telefone, observacoes FROM clientes ORDER BY nome;'
+      );
+      setClientes(rows);
     } catch (error) {
-      console.log('Erro ao carregar vendas para status', error);
-    } finally {
-      setCarregando(false);
+      console.log('Erro ao carregar clientes em VendasScreen:', error);
     }
-  }, [db, statusFiltro]);
+  }, [db]);
 
   useFocusEffect(
     useCallback(() => {
-      carregarVendas();
-    }, [carregarVendas]),
+      carregarClientes();
+    }, [carregarClientes])
   );
 
-  const handleAlterarStatus = useCallback(
-    (venda: Venda, novoStatus: StatusVenda) => {
-      // se já está entregue, não muda
-      if (venda.status === 'entregue') {
-        Alert.alert('Atenção', 'Esta venda já foi entregue e não pode ser alterada.');
-        return;
-      }
+  // --------------------------------------------------
+  // Salvar venda
+  // --------------------------------------------------
+  const handleSalvarVenda = async () => {
+    if (!db) return;
 
-      // se for marcar como entregue, avisa que é irreversível
-      const mensagem =
-        novoStatus === 'entregue'
-          ? 'Marcar como ENTREGUE é uma ação definitiva. Deseja continuar?'
-          : `Tem certeza que deseja marcar esta venda como "${statusLabel(novoStatus)}"?`;
-
-      Alert.alert(
-        'Confirmar alteração',
-        mensagem,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Confirmar',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await db.runAsync('UPDATE vendas SET status = ? WHERE id = ?;', [
-                  novoStatus,
-                  venda.id,
-                ]);
-                await carregarVendas();
-              } catch (error) {
-                console.log('Erro ao atualizar status da venda', error);
-                Alert.alert('Erro', 'Não foi possível atualizar o status.');
-              }
-            },
-          },
-        ],
-        { cancelable: true },
-      );
-    },
-    [db, carregarVendas],
-  );
-
-  const renderStatusBadge = (status: StatusVenda) => {
-    const badgeStyle: any[] = [styles.statusBadge];
-
-    switch (status) {
-      case 'feita':
-        badgeStyle.push(styles.statusBadgeFeita);
-        break;
-      case 'pronta':
-        badgeStyle.push(styles.statusBadgePronta);
-        break;
-      case 'paga':
-        badgeStyle.push(styles.statusBadgePaga);
-        break;
-      case 'entregue':
-        badgeStyle.push(styles.statusBadgeEntregue);
-        break;
+    if (!descricao.trim() || !data.trim() || !valor.trim() || !custo.trim()) {
+      // você pode colocar um Alert aqui se quiser
+      return;
     }
 
+    try {
+      setSalvandoVenda(true);
+
+      const valorNum = parseFloat(valor.replace(',', '.')) || 0;
+      const custoNum = parseFloat(custo.replace(',', '.')) || 0;
+      const lucro = valorNum - custoNum;
+
+      await db.runAsync(
+        `
+        INSERT INTO vendas (data, descricao, tipo, valor, custo, lucro, status, cliente)
+        VALUES (?, ?, ?, ?, ?, ?, 'feita', ?);
+      `,
+        [
+          data.trim(),
+          descricao.trim(),
+          tipo,
+          valorNum,
+          custoNum,
+          lucro,
+          clienteSelecionadoNome || null,
+        ]
+      );
+
+      setDescricao('');
+      setData('');
+      setValor('');
+      setCusto('');
+      setClienteSelecionadoNome('');
+    } catch (error) {
+      console.log('Erro ao salvar venda:', error);
+    } finally {
+      setSalvandoVenda(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // Novo cliente inline
+  // --------------------------------------------------
+  const abrirNovoClienteInline = () => {
+    setNovoNome('');
+    setNovoTelefone('');
+    setNovoObs('');
+    setMostrarNovoClienteInline(true);
+  };
+
+  const cancelarNovoClienteInline = () => {
+    setMostrarNovoClienteInline(false);
+    setNovoNome('');
+    setNovoTelefone('');
+    setNovoObs('');
+  };
+
+  const handleSalvarNovoCliente = async () => {
+    if (!db) return;
+    if (!novoNome.trim()) {
+      return;
+    }
+
+    try {
+      setSalvandoCliente(true);
+
+      await db.runAsync(
+        `
+        INSERT INTO clientes (nome, telefone, observacoes)
+        VALUES (?, ?, ?);
+      `,
+        [
+          novoNome.trim(),
+          novoTelefone.trim() || null,
+          novoObs.trim() || null,
+        ]
+      );
+
+      await carregarClientes();
+
+      setClienteSelecionadoNome(novoNome.trim());
+      setMostrarNovoClienteInline(false);
+      setNovoNome('');
+      setNovoTelefone('');
+      setNovoObs('');
+    } catch (error) {
+      console.log('Erro ao salvar novo cliente:', error);
+    } finally {
+      setSalvandoCliente(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // Render UI helpers
+  // --------------------------------------------------
+  const renderTipoBotao = (valor: TipoVenda, label: string) => {
+    const ativo = tipo === valor;
     return (
-      <View style={badgeStyle}>
-        <Text style={styles.statusBadgeTexto}>{statusLabel(status)}</Text>
-      </View>
+      <TouchableOpacity
+        key={valor}
+        style={[styles.tipoBotao, ativo && styles.tipoBotaoAtivo]}
+        onPress={() => setTipo(valor)}
+      >
+        <Text
+          style={[
+            styles.tipoBotaoTexto,
+            ativo && styles.tipoBotaoTextoAtivo,
+          ]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
     );
   };
 
-  const vendasFiltradas =
-    statusFiltro === 'todas'
-      ? vendas
-      : vendas.filter(v => v.status === statusFiltro);
+  const renderChipsClientes = () => {
+    if (clientes.length === 0) {
+      return (
+        <Text style={styles.emptyText}>
+          Nenhum cliente cadastrado ainda. Cadastre um novo abaixo.
+        </Text>
+      );
+    }
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
-      <AppHeader
-        titulo="Status das Vendas"
-        logoUri={lojaConfig?.logoUri ?? undefined}
-      />
-
-      <View style={styles.card}>
-        <View style={styles.cardHeaderLinha}>
-          <MaterialCommunityIcons
-            name="clipboard-list-outline"
-            size={20}
-            color={COLORS.primary}
-            style={styles.botaoIcon}
-          />
-          <Text style={styles.cardTitulo}>Filtrar por status</Text>
-        </View>
-
-        <View style={styles.filtroLinha}>
-          {(['todas', 'feita', 'pronta', 'paga', 'entregue'] as const).map(s => (
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingVertical: 4 }}
+      >
+        {clientes.map((c) => {
+          const ativo = clienteSelecionadoNome === c.nome;
+          return (
             <TouchableOpacity
-              key={s}
+              key={c.id}
               style={[
-                styles.statusFiltroChip,
-                statusFiltro === s && styles.statusFiltroChipAtivo,
+                styles.filtroBotao,
+                ativo && styles.filtroBotaoAtivo,
               ]}
-              onPress={() => setStatusFiltro(s)}
+              onPress={() =>
+                setClienteSelecionadoNome(
+                  ativo ? '' : c.nome
+                )
+              }
             >
               <Text
                 style={[
-                  styles.statusFiltroTexto,
-                  statusFiltro === s && styles.statusFiltroTextoAtivo,
+                  styles.filtroBotaoTexto,
+                  ativo && styles.filtroBotaoTextoAtivo,
                 ]}
               >
-                {s === 'todas' ? 'Todas' : statusLabel(s as StatusVenda)}
+                {c.nome}
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          );
+        })}
+      </ScrollView>
+    );
+  };
 
-        <TouchableOpacity
-          style={styles.botaoSecundario}
-          onPress={carregarVendas}
-          disabled={carregando}
-        >
-          {carregando ? (
-            <ActivityIndicator color={COLORS.primaryText} />
-          ) : (
-            <>
-              <MaterialCommunityIcons
-                name="refresh"
-                size={18}
-                color={COLORS.primaryText}
-                style={styles.botaoIcon}
-              />
-              <Text style={styles.botaoSecundarioTexto}>Recarregar vendas</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+  return (
+    <SwipeTabsContainer>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.container}>
+          <ScrollView contentContainerStyle={styles.scroll}>
+            <AppHeader
+          titulo="Registrar Vendas"
+          logoUri={lojaConfig?.logoUri ?? undefined}
+        />
 
-      <View style={[styles.card, { marginTop: 12 }]}>
-        <View style={styles.cardHeaderLinha}>
-          <MaterialCommunityIcons
-            name="format-list-bulleted"
-            size={20}
-            color={COLORS.primary}
-            style={styles.botaoIcon}
-          />
-          <Text style={styles.cardTitulo}>Vendas</Text>
-        </View>
-
-        {carregando && vendas.length === 0 && (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />
-        )}
-
-        {vendasFiltradas.length === 0 && !carregando && (
-          <Text style={styles.listaVaziaTexto}>
-            Nenhuma venda encontrada para o filtro selecionado.
-          </Text>
-        )}
-
-        {vendasFiltradas.map(venda => (
-          <View key={venda.id} style={styles.vendaItem}>
-            <View style={styles.vendaLinhaSuperior}>
-              <View style={{ flex: 1 }}>
-                {venda.cliente ? (
-                  <Text style={styles.vendaCliente}>{venda.cliente}</Text>
-                ) : (
-                  <Text style={styles.vendaCliente}>Cliente não informado</Text>
-                )}
-
-                <Text style={styles.vendaDescricao}>{venda.descricao}</Text>
+            <View style={styles.card}>
+              <View style={styles.cardHeaderLinha}>
+                <MaterialCommunityIcons
+                  name="cart-arrow-down"
+                  size={22}
+                  color={COLORS.primary}
+                />
+                <Text style={styles.cardTitulo}>Nova venda</Text>
               </View>
-              {renderStatusBadge(venda.status)}
-            </View>
 
-            <Text style={styles.vendaDataValor}>
-              {venda.data} • Valor: R$ {venda.valor.toFixed(2)} • Lucro:{' '}
-              R$ {venda.lucro.toFixed(2)}
-            </Text>
-
-            {venda.status !== 'entregue' && (
-              <View style={styles.statusActionsRow}>
-                {venda.status === 'feita' && (
-                  <TouchableOpacity
-                    style={styles.statusActionButton}
-                    onPress={() => handleAlterarStatus(venda, 'pronta')}
-                  >
-                    <Text style={styles.statusActionButtonText}>
-                      Marcar como pronta
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {venda.status === 'pronta' && (
-                  <TouchableOpacity
-                    style={styles.statusActionButton}
-                    onPress={() => handleAlterarStatus(venda, 'paga')}
-                  >
-                    <Text style={styles.statusActionButtonText}>
-                      Marcar como paga
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {venda.status === 'paga' && (
-                  <TouchableOpacity
-                    style={styles.statusActionButton}
-                    onPress={() => handleAlterarStatus(venda, 'entregue')}
-                  >
-                    <Text style={styles.statusActionButtonText}>
-                      Marcar como entregue
-                    </Text>
-                  </TouchableOpacity>
-                )}
+              {/* Descrição */}
+              <Text style={styles.label}>Descrição do produto/serviço</Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons
+                  name="sticker-text-outline"
+                  size={20}
+                  color={COLORS.textMuted}
+                  style={styles.inputIconLeft}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Ex: Totem MDF 15x20"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={descricao}
+                  onChangeText={setDescricao}
+                />
               </View>
-            )}
 
-            {venda.status === 'entregue' && (
-              <Text style={styles.vendaStatusFinalTexto}>
-                Esta venda já foi concluída e não pode mais ser alterada.
+              {/* Tipo */}
+              <Text style={[styles.label, { marginTop: 12 }]}>Tipo</Text>
+              <View style={styles.tipoLinha}>
+                {renderTipoBotao('LASER', 'Laser')}
+                {renderTipoBotao('3D', 'Impressão 3D')}
+                {renderTipoBotao('OUTRO', 'Outro')}
+              </View>
+
+              {/* Data */}
+              <Text style={[styles.label, { marginTop: 12 }]}>
+                Data (DD/MM/AAAA)
               </Text>
-            )}
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons
+                  name="calendar-month"
+                  size={20}
+                  color={COLORS.textMuted}
+                  style={styles.inputIconLeft}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="02/12/2025"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={data}
+                  onChangeText={setData}
+                />
+              </View>
+
+              {/* Valor */}
+              <Text style={[styles.label, { marginTop: 12 }]}>
+                Valor pago pelo cliente (R$)
+              </Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons
+                  name="cash-multiple"
+                  size={20}
+                  color={COLORS.textMuted}
+                  style={styles.inputIconLeft}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Ex: 80"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="decimal-pad"
+                  value={valor}
+                  onChangeText={setValor}
+                />
+              </View>
+
+              {/* Custo */}
+              <Text style={[styles.label, { marginTop: 12 }]}>
+                Custo de produção (R$)
+              </Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons
+                  name="hammer-screwdriver"
+                  size={20}
+                  color={COLORS.textMuted}
+                  style={styles.inputIconLeft}
+                />
+                <TextInput
+                  style={[styles.input, { flex: 1 }]}
+                  placeholder="Ex: 30"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="decimal-pad"
+                  value={custo}
+                  onChangeText={setCusto}
+                />
+              </View>
+
+              {/* Clientes */}
+              <View style={{ marginTop: 16 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text style={styles.label}>Cliente</Text>
+                  <TouchableOpacity
+                    style={styles.botaoSecundario}
+                    onPress={
+                      mostrarNovoClienteInline
+                        ? cancelarNovoClienteInline
+                        : abrirNovoClienteInline
+                    }
+                  >
+                    <MaterialCommunityIcons
+                      name={
+                        mostrarNovoClienteInline
+                          ? 'close-circle-outline'
+                          : 'account-plus-outline'
+                      }
+                      size={18}
+                      color={COLORS.text}
+                      style={styles.botaoIcon}
+                    />
+                    <Text style={styles.botaoSecundarioTexto}>
+                      {mostrarNovoClienteInline
+                        ? 'Fechar cadastro'
+                        : 'Novo cliente'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {renderChipsClientes()}
+
+                {/* Mini-form de novo cliente inline */}
+                {mostrarNovoClienteInline && (
+                  <View style={[styles.card, { marginTop: 12 }]}>
+                    <Text style={styles.sectionTitle}>
+                      Cadastrar novo cliente
+                    </Text>
+
+                    <Text style={styles.label}>Nome</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Ex: Maria Cliente"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={novoNome}
+                      onChangeText={setNovoNome}
+                    />
+
+                    <Text style={[styles.label, { marginTop: 10 }]}>
+                      Telefone (opcional)
+                    </Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Ex: (99) 99999-9999"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={novoTelefone}
+                      onChangeText={setNovoTelefone}
+                      keyboardType="phone-pad"
+                    />
+
+                    <Text style={[styles.label, { marginTop: 10 }]}>
+                      Observações (opcional)
+                    </Text>
+                    <TextInput
+                      style={[styles.modalInput, { height: 80 }]}
+                      placeholder="Anotações sobre o cliente..."
+                      placeholderTextColor={COLORS.textMuted}
+                      value={novoObs}
+                      onChangeText={setNovoObs}
+                      multiline
+                    />
+
+                    <View style={styles.clienteActionsRow}>
+                      <TouchableOpacity
+                        style={styles.botaoSecundario}
+                        onPress={cancelarNovoClienteInline}
+                        disabled={salvandoCliente}
+                      >
+                        <Text style={styles.botaoSecundarioTexto}>
+                          Cancelar
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.botao}
+                        onPress={handleSalvarNovoCliente}
+                        disabled={salvandoCliente}
+                      >
+                        <Text style={styles.botaoTexto}>
+                          {salvandoCliente ? 'Salvando...' : 'Salvar cliente'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Botão salvar venda */}
+              <TouchableOpacity
+                style={[styles.botaoPrimario, { marginTop: 20 }]}
+                onPress={handleSalvarVenda}
+                disabled={salvandoVenda}
+              >
+                <MaterialCommunityIcons
+                  name="check-circle-outline"
+                  size={20}
+                  color={COLORS.primaryText}
+                  style={styles.botaoIcon}
+                />
+                <Text style={styles.botaoPrimarioTexto}>
+                  {salvandoVenda ? 'Salvando...' : 'Salvar venda'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </SwipeTabsContainer>
   );
 };
 
-export default StatusVendasScreen;
+export default VendasScreen;

@@ -1,117 +1,264 @@
 import React, { useCallback, useContext, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { DbContext } from '../../App';
-import AppHeader from '../components/AppHeader';
 import { styles, COLORS } from '../styles';
+import AppHeader from '../components/AppHeader';
+import SwipeTabsContainer from '../components/SwipeTabsContainer';
 
-type Resumo = {
-  totalVendas: number;
-  totalLucro: number;
-  totalCompras: number;
-};
+type StatusVenda = 'feita' | 'pronta' | 'paga' | 'entregue';
+
+interface Venda {
+  id: number;
+  data: string; // DD/MM/AAAA
+  descricao: string;
+  tipo: string;
+  valor: number;
+  custo: number;
+  lucro: number;
+  status: StatusVenda;
+  cliente?: string | null;
+}
+
+interface Compra {
+  id: number;
+  data: string; // DD/MM/AAAA
+  descricao: string;
+  categoria: string;
+  fornecedor?: string | null;
+  valor: number;
+  observacoes?: string | null;
+}
+
+function parseDataBr(dataStr: string): Date | null {
+  if (!dataStr) return null;
+  const parts = dataStr.split('/');
+  if (parts.length !== 3) return null;
+  const [diaStr, mesStr, anoStr] = parts;
+  const dia = Number(diaStr);
+  const mes = Number(mesStr);
+  const ano = Number(anoStr);
+
+  if (!dia || !mes || !ano) return null;
+  const d = new Date(ano, mes - 1, dia);
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
 
 const RelatoriosScreen: React.FC = () => {
   const { db, lojaConfig } = useContext(DbContext)!;
-  const [resumo, setResumo] = useState<Resumo | null>(null);
-  const [carregando, setCarregando] = useState(false);
 
-  const carregarResumo = useCallback(async () => {
+  const [vendas, setVendas] = useState<Venda[]>([]);
+  const [compras, setCompras] = useState<Compra[]>([]);
+
+  const [dataInicial, setDataInicial] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
+
+  const [loading, setLoading] = useState(false);
+
+  const carregarDados = useCallback(async () => {
+    if (!db) return;
     try {
-      setCarregando(true);
+      setLoading(true);
 
-      const [rowVendas] = await db.getAllAsync<{ total: number | null }>(
-        'SELECT SUM(valor) as total FROM vendas;',
+      const rowsVendas = await db.getAllAsync<Venda>(
+        'SELECT * FROM vendas ORDER BY data ASC, id ASC;'
       );
-      const [rowLucro] = await db.getAllAsync<{ total: number | null }>(
-        'SELECT SUM(lucro) as total FROM vendas;',
-      );
-      const [rowCompras] = await db.getAllAsync<{ total: number | null }>(
-        'SELECT SUM(valor) as total FROM compras;',
+      const rowsCompras = await db.getAllAsync<Compra>(
+        'SELECT * FROM compras ORDER BY data ASC, id ASC;'
       );
 
-      setResumo({
-        totalVendas: rowVendas?.total ?? 0,
-        totalLucro: rowLucro?.total ?? 0,
-        totalCompras: rowCompras?.total ?? 0,
-      });
+      setVendas(rowsVendas);
+      setCompras(rowsCompras);
     } catch (error) {
-      console.log('Erro ao carregar resumo', error);
+      console.log('Erro ao carregar dados de relatórios:', error);
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   }, [db]);
 
   useFocusEffect(
     useCallback(() => {
-      carregarResumo();
-    }, [carregarResumo]),
+      carregarDados();
+    }, [carregarDados])
   );
 
-  const lucroLiquido = (resumo?.totalLucro ?? 0) - (resumo?.totalCompras ?? 0);
+  const filtrarPorPeriodo = <T extends { data: string }>(
+    lista: T[]
+  ): T[] => {
+    const ini = parseDataBr(dataInicial);
+    const fim = parseDataBr(dataFinal);
+
+    if (!ini && !fim) return lista;
+
+    return lista.filter((item) => {
+      const d = parseDataBr(item.data);
+      if (!d) return false;
+
+      if (ini && d < ini) return false;
+      if (fim) {
+        const fimAjustado = new Date(fim);
+        fimAjustado.setHours(23, 59, 59, 999);
+        if (d > fimAjustado) return false;
+      }
+
+      return true;
+    });
+  };
+
+  const vendasFiltradas = filtrarPorPeriodo(vendas);
+  const comprasFiltradas = filtrarPorPeriodo(compras);
+
+  const totalFaturamento = vendasFiltradas.reduce(
+    (soma, v) => soma + (v.valor || 0),
+    0
+  );
+  const totalLucro = vendasFiltradas.reduce(
+    (soma, v) => soma + (v.lucro || 0),
+    0
+  );
+  const totalCompras = comprasFiltradas.reduce(
+    (soma, c) => soma + (c.valor || 0),
+    0
+  );
+
+  const saldoLiquido = totalLucro - totalCompras;
+
+  const resumoPeriodo =
+    dataInicial.trim() || dataFinal.trim()
+      ? `${dataInicial || 'início'} até ${dataFinal || 'hoje'}`
+      : 'Todo o período';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
-      <AppHeader
-        titulo="Relatórios"
-        logoUri={lojaConfig?.logoUri ?? undefined}
-      />
+    <SwipeTabsContainer>
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <AppHeader
+          titulo="Relatórios"
+          logoUri={lojaConfig?.logoUri ?? undefined}
+        />
 
-      <View style={styles.card}>
-        <View style={styles.cardHeaderLinha}>
-          <MaterialCommunityIcons
-            name="chart-bar"
-            size={20}
-            color={COLORS.primary}
-            style={styles.botaoIcon}
-          />
-          <Text style={styles.cardTitulo}>Resumo geral</Text>
-        </View>
+          {/* CARD FILTRO / PERÍODO */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderLinha}>
+              <MaterialCommunityIcons
+                name="calendar-range"
+                size={22}
+                color={COLORS.primary}
+              />
+              <Text style={styles.cardTitulo}>Período de análise</Text>
+            </View>
 
-        {carregando && !resumo && (
-          <ActivityIndicator color={COLORS.primary} style={{ marginTop: 8 }} />
-        )}
+            <Text style={styles.label}>Data inicial (DD/MM/AAAA)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: 01/01/2025"
+              placeholderTextColor={COLORS.textMuted}
+              value={dataInicial}
+              onChangeText={setDataInicial}
+            />
 
-        {resumo && (
-          <View style={styles.resumoCard}>
-            <Text style={styles.resumoLabel}>Faturamento total</Text>
-            <Text style={styles.resumoValorGrande}>
-              R$ {resumo.totalVendas.toFixed(2)}
+            <Text style={[styles.label, { marginTop: 12 }]}>
+              Data final (DD/MM/AAAA)
             </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: 31/12/2025"
+              placeholderTextColor={COLORS.textMuted}
+              value={dataFinal}
+              onChangeText={setDataFinal}
+            />
 
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Lucro bruto</Text>
-              <Text style={styles.resumoValorLinha}>
-                R$ {resumo.totalLucro.toFixed(2)}
-              </Text>
-            </View>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Compras / custos</Text>
-              <Text style={styles.resumoValorLinha}>
-                R$ {resumo.totalCompras.toFixed(2)}
-              </Text>
-            </View>
-
-            <View style={styles.resumoRow}>
-              <Text style={styles.resumoLabel}>Lucro líquido estimado</Text>
-              <Text
-                style={[
-                  styles.resumoValorLinha,
-                  lucroLiquido >= 0
-                    ? styles.resumoBadgePositivo
-                    : styles.resumoBadgeNegativo,
-                ]}
-              >
-                R$ {lucroLiquido.toFixed(2)}
-              </Text>
-            </View>
+            <Text style={[styles.listaVaziaTexto, { marginTop: 8 }]}>
+              Se deixar em branco, o relatório considera todas as datas.
+            </Text>
           </View>
-        )}
+
+          {/* CARD RESUMO GERAL */}
+          <View style={styles.card}>
+            <View style={styles.cardHeaderLinha}>
+              <MaterialCommunityIcons
+                name="chart-line"
+                size={22}
+                color={COLORS.primary}
+              />
+              <Text style={styles.cardTitulo}>Resumo financeiro</Text>
+            </View>
+
+            <Text style={styles.resumoTitulo}>Período</Text>
+            <Text style={styles.resumoLinha}>{resumoPeriodo}</Text>
+
+            {loading ? (
+              <Text style={[styles.emptyText, { marginTop: 10 }]}>
+                Carregando dados...
+              </Text>
+            ) : (
+              <>
+                <View style={styles.resumoCard}>
+                  <Text style={styles.resumoLabel}>
+                    Faturamento total (vendas)
+                  </Text>
+                  <Text style={styles.resumoValorGrande}>
+                    R$ {totalFaturamento.toFixed(2).replace('.', ',')}
+                  </Text>
+
+                  <View style={styles.resumoRow}>
+                    <Text style={styles.resumoLabel}>Lucro total</Text>
+                    <Text
+                      style={[
+                        styles.resumoValorLinha,
+                        saldoLiquido >= 0
+                          ? styles.resumoBadgePositivo
+                          : styles.resumoBadgeNegativo,
+                      ]}
+                    >
+                      R$ {totalLucro.toFixed(2).replace('.', ',')}
+                    </Text>
+                  </View>
+
+                  <View style={styles.resumoRow}>
+                    <Text style={styles.resumoLabel}>Total em compras</Text>
+                    <Text style={styles.resumoValorLinha}>
+                      R$ {totalCompras.toFixed(2).replace('.', ',')}
+                    </Text>
+                  </View>
+
+                  <View style={styles.resumoRow}>
+                    <Text style={styles.resumoLabel}>Saldo líquido</Text>
+                    <Text
+                      style={[
+                        styles.resumoValorLinha,
+                        saldoLiquido >= 0
+                          ? styles.resumoBadgePositivo
+                          : styles.resumoBadgeNegativo,
+                      ]}
+                    >
+                      R$ {saldoLiquido.toFixed(2).replace('.', ',')}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.resumoLinha}>
+                    Vendas consideradas: {vendasFiltradas.length}
+                  </Text>
+                  <Text style={styles.resumoLinha}>
+                    Compras consideradas: {comprasFiltradas.length}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        </ScrollView>
       </View>
-    </ScrollView>
+    </SwipeTabsContainer>
   );
 };
 
